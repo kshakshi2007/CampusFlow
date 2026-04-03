@@ -3,11 +3,20 @@ import { motion } from 'motion/react';
 import { 
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
-    ChevronRight, BookMarked, ShieldCheck, Users
+    ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+
+const safeJson = async (res: Response) => {
+    const text = await res.text();
+    try {
+        return text ? JSON.parse(text) : null;
+    } catch (e) {
+        return null;
+    }
+};
 
 export default function Dashboard() {
     const { user, logout, token } = useAuth();
@@ -32,11 +41,11 @@ export default function Dashboard() {
             headers: { 'Authorization': `Bearer ${token}` }
         })
         .then(async res => {
+            const data = await safeJson(res);
             if (!res.ok) {
-                const errorData = await res.json().catch(() => ({ message: 'Request failed' }));
-                throw new Error(errorData.message || 'Request failed');
+                throw new Error(data?.message || 'Request failed');
             }
-            return res.json();
+            return data;
         })
         .then(setData)
         .catch(err => console.error("Dashboard fetch error:", err))
@@ -64,6 +73,12 @@ export default function Dashboard() {
                 return user?.role === 'admin' ? <AdminPanelView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
             case 'Library':
                 return <LibraryView token={token!} user={user!} />;
+            case 'Attendance':
+                return <AttendanceView token={token!} user={user!} />;
+            case 'Results':
+                return <ResultsView token={token!} user={user!} />;
+            case 'Profile':
+                return <ProfileView token={token!} user={user!} />;
             default:
                 return <StudentDashboard data={data} user={user} />;
         }
@@ -82,6 +97,9 @@ export default function Dashboard() {
 
                 <nav className="space-y-2 flex-1">
                     <SidebarLink icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'Dashboard'} onClick={() => setActiveTab('Dashboard')} />
+                    <SidebarLink icon={<User />} label="Profile" active={activeTab === 'Profile'} onClick={() => setActiveTab('Profile')} />
+                    <SidebarLink icon={<BarChart3 />} label="Attendance" active={activeTab === 'Attendance'} onClick={() => setActiveTab('Attendance')} />
+                    <SidebarLink icon={<FileText />} label="Results" active={activeTab === 'Results'} onClick={() => setActiveTab('Results')} />
                     <SidebarLink icon={<BookMarked />} label="Study Materials" active={activeTab === 'Study Materials'} onClick={() => setActiveTab('Study Materials')} />
                     <SidebarLink icon={<Calendar />} label="Events" active={activeTab === 'Events'} onClick={() => setActiveTab('Events')} />
                     <SidebarLink icon={<Search />} label="Lost & Found" active={activeTab === 'Lost & Found'} onClick={() => setActiveTab('Lost & Found')} />
@@ -389,7 +407,8 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
 
     useEffect(() => {
         fetch('/api/materials', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : []).then(setMaterials);
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setMaterials);
     }, [token]);
 
     const filtered = materials.filter(m => 
@@ -409,7 +428,8 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
         if (res.ok) {
             setIsUploadOpen(false);
             fetch('/api/materials', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(res => res.ok ? res.json() : []).then(setMaterials);
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setMaterials);
         }
     };
 
@@ -483,7 +503,20 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
                             </select>
                             <input name="subjectId" placeholder="Subject ID" required type="number" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <input name="semester" placeholder="Semester" required type="number" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="url" placeholder="File URL" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-400 uppercase">File Source</label>
+                                <input name="url" placeholder="File URL or Drive Link" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                                <div className="text-center text-xs text-gray-400">OR</div>
+                                <input type="file" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm" onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        // In a real app, we'd upload to S3/Cloudinary. 
+                                        // Here we'll just simulate by putting the name in the URL field if it's empty
+                                        const urlInput = (e.target.form as HTMLFormElement).elements.namedItem('url') as HTMLInputElement;
+                                        if (!urlInput.value) urlInput.value = `File: ${file.name}`;
+                                    }
+                                }} />
+                            </div>
                             <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Upload</button>
                             <button type="button" onClick={() => setIsUploadOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
                         </form>
@@ -497,10 +530,13 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
 function EventsView({ token, user }: { token: string, user: any }) {
     const [events, setEvents] = useState<any[]>([]);
     const [isAddOpen, setIsAddOpen] = useState(false);
+    const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
+    const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
     useEffect(() => {
         fetch('/api/events', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : []).then(setEvents);
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setEvents);
     }, [token]);
 
     const handleAddEvent = async (e: React.FormEvent) => {
@@ -515,7 +551,26 @@ function EventsView({ token, user }: { token: string, user: any }) {
         if (res.ok) {
             setIsAddOpen(false);
             fetch('/api/events', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(res => res.ok ? res.json() : []).then(setEvents);
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setEvents);
+        }
+    };
+
+    const handleMarkAttendance = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = {
+            eventId: selectedEvent.id,
+            rollNumbers: formData.get('rollNumbers')
+        };
+        const res = await fetch('/api/events/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            setIsAttendanceOpen(false);
+            alert('Attendance alert sent to faculty!');
         }
     };
 
@@ -539,12 +594,22 @@ function EventsView({ token, user }: { token: string, user: any }) {
                             <span className="text-2xl font-bold text-[#7C3AED]">{new Date(e.date).getDate()}</span>
                             <span className="text-xs font-bold text-[#7C3AED] uppercase">{new Date(e.date).toLocaleString('default', { month: 'short' })}</span>
                         </div>
-                        <div>
+                        <div className="flex-1">
                             <h3 className="text-xl font-bold text-[#1F2937] mb-2">{e.title}</h3>
                             <p className="text-sm text-[#6B7280] mb-4 line-clamp-2">{e.description}</p>
-                            <div className="flex items-center gap-4">
-                                <span className="text-xs font-bold px-3 py-1 bg-purple-100 text-[#7C3AED] rounded-full uppercase">{e.category}</span>
-                                <button className="text-sm font-bold text-[#7C3AED] hover:underline">Register Now</button>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs font-bold px-3 py-1 bg-purple-100 text-[#7C3AED] rounded-full uppercase">{e.category}</span>
+                                    <button className="text-sm font-bold text-[#7C3AED] hover:underline">Register Now</button>
+                                </div>
+                                {user.role === 'admin' && (
+                                    <button 
+                                        onClick={() => { setSelectedEvent(e); setIsAttendanceOpen(true); }}
+                                        className="text-xs font-bold text-orange-500 hover:underline"
+                                    >
+                                        Mark Attendance
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -571,6 +636,24 @@ function EventsView({ token, user }: { token: string, user: any }) {
                     </div>
                 </div>
             )}
+            {isAttendanceOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-2">Event Attendance</h3>
+                        <p className="text-sm text-gray-500 mb-6">Enter roll numbers of students who attended "{selectedEvent?.title}"</p>
+                        <form className="space-y-4" onSubmit={handleMarkAttendance}>
+                            <textarea 
+                                name="rollNumbers" 
+                                placeholder="CS2026001, CS2026005, CS2026010..." 
+                                required 
+                                className="w-full h-32 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" 
+                            />
+                            <button type="submit" className="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold">Send Alert to Faculty</button>
+                            <button type="button" onClick={() => setIsAttendanceOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -584,7 +667,8 @@ function LostFoundView({ token, user }: { token: string, user: any }) {
 
     useEffect(() => {
         fetch('/api/lost-found', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : []).then(setItems);
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setItems);
     }, [token]);
 
     const filtered = items.filter(item => 
@@ -770,8 +854,11 @@ function LibraryView({ token, user }: { token: string, user: any }) {
 
     useEffect(() => {
         fetch('/api/library/books', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : []).then(setBooks);
-        fetch('/api/library/status').then(res => res.ok ? res.json() : { status: 'open' }).then(data => setStatus(data.status));
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setBooks);
+        fetch('/api/library/status')
+            .then(async res => (res.ok ? await safeJson(res) : { status: 'open' }) || { status: 'open' })
+            .then(data => setStatus(data.status));
     }, [token]);
 
     const filtered = books.filter(b => b.title.toLowerCase().includes(search.toLowerCase()) || b.author.toLowerCase().includes(search.toLowerCase()));
@@ -797,7 +884,8 @@ function LibraryView({ token, user }: { token: string, user: any }) {
         if (res.ok) {
             setIsAddOpen(false);
             fetch('/api/library/books', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(res => res.ok ? res.json() : []).then(setBooks);
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setBooks);
         }
     };
 
@@ -954,7 +1042,7 @@ function FeesView({ token }: { token: string }) {
     useEffect(() => {
         const endpoint = user?.role === 'admin' ? '/api/admin/fees' : '/api/student/fees';
         fetch(endpoint, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.json())
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
             .then(setFees)
             .finally(() => setLoading(false));
     }, [token, user?.role]);
@@ -1051,8 +1139,11 @@ function LibrarianDashboard({ token }: { token: string }) {
 
     useEffect(() => {
         fetch('/api/library/books', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : []).then(setBooks);
-        fetch('/api/library/status').then(res => res.ok ? res.json() : { status: 'open' }).then(data => setStats(prev => ({ ...prev, status: data.status })));
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setBooks);
+        fetch('/api/library/status')
+            .then(async res => (res.ok ? await safeJson(res) : { status: 'open' }) || { status: 'open' })
+            .then(data => setStats(prev => ({ ...prev, status: data.status })));
     }, [token]);
 
     const updateStatus = async (newStatus: string) => {
@@ -1173,7 +1264,8 @@ function AdminPanelView({ token }: { token: string }) {
 
     useEffect(() => {
         fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : []).then(setStudents);
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setStudents);
     }, [token]);
 
     const handleUpdateStudent = async (e: React.FormEvent) => {
@@ -1395,11 +1487,406 @@ function SidebarLink({ icon, label, active = false, onClick }: { icon: React.Rea
 
 function QuickAction({ icon, label, color }: { icon: React.ReactNode, label: string, color: string }) {
     return (
-        <button className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-50 hover:shadow-md transition-all group flex flex-col items-center gap-3">
-            <div className={`w-12 h-12 ${color} text-white rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                {icon}
+        <motion.button 
+            whileHover={{ y: -5 }}
+            className="flex flex-col items-center gap-3 p-6 bg-white rounded-[32px] shadow-sm border border-gray-50 group"
+        >
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 ${color}`}>
+                {React.cloneElement(icon as React.ReactElement, { className: 'w-7 h-7' })}
             </div>
             <span className="text-sm font-bold text-[#1F2937]">{label}</span>
-        </button>
+        </motion.button>
+    );
+}
+
+function AttendanceView({ token, user }: { token: string, user: any }) {
+    const [students, setStudents] = useState<any[]>([]);
+    const [subjects, setSubjects] = useState<any[]>([]);
+    const [stats, setStats] = useState<any[]>([]);
+    const [isMarking, setIsMarking] = useState(false);
+
+    useEffect(() => {
+        if (user.role === 'admin' || user.role === 'faculty') {
+            fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setStudents);
+        }
+        fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setSubjects);
+        
+        if (user.role === 'student') {
+            fetch('/api/attendance/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setStats);
+        }
+    }, [token, user.role]);
+
+    const handleMarkAttendance = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        
+        const res = await fetch('/api/faculty/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            alert('Attendance marked successfully');
+            setIsMarking(false);
+        }
+    };
+
+    if (user.role === 'student') {
+        const subjectStats = stats.reduce((acc: any, curr: any) => {
+            if (!acc[curr.subject]) acc[curr.subject] = [];
+            acc[curr.subject].push(curr);
+            return acc;
+        }, {});
+
+        return (
+            <div className="space-y-8">
+                <h2 className="text-2xl font-bold text-[#1F2937]">Your Attendance Graphs</h2>
+                <div className="grid lg:grid-cols-2 gap-8">
+                    {Object.entries(subjectStats).map(([subject, data]: [string, any]) => (
+                        <div key={subject} className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 h-[400px]">
+                            <h3 className="text-lg font-bold mb-6">{subject}</h3>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={data}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                                    <XAxis dataKey="date" hide />
+                                    <YAxis hide />
+                                    <Tooltip />
+                                    <Area type="monotone" dataKey="status" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.1} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-8">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Management</h2>
+                <button 
+                    onClick={() => setIsMarking(true)}
+                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold"
+                >
+                    Mark Attendance
+                </button>
+            </div>
+
+            <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
+                        <tr>
+                            <th className="px-8 py-4">Student</th>
+                            <th className="px-8 py-4">Roll No</th>
+                            <th className="px-8 py-4">Department</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {students.map((s, i) => (
+                            <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
+                                <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
+                                <td className="px-8 py-5 text-sm text-[#6B7280]">{s.department}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {isMarking && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-6">Mark Attendance</h3>
+                        <form className="space-y-4" onSubmit={handleMarkAttendance}>
+                            <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="">Select Student</option>
+                                {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                            </select>
+                            <select name="subjectId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="">Select Subject</option>
+                                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                            <input name="date" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <select name="status" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="present">Present</option>
+                                <option value="absent">Absent</option>
+                            </select>
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Attendance</button>
+                            <button type="button" onClick={() => setIsMarking(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function ResultsView({ token, user }: { token: string, user: any }) {
+    const [students, setStudents] = useState<any[]>([]);
+    const [subjects, setSubjects] = useState<any[]>([]);
+    const [studentResults, setStudentResults] = useState<any>(null);
+    const [isAdding, setIsAdding] = useState(false);
+
+    useEffect(() => {
+        if (user.role === 'admin' || user.role === 'faculty') {
+            fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setStudents);
+            fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setSubjects);
+        }
+        if (user.role === 'student') {
+            fetch(`/api/results/student/${user.id}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : null))
+                .then(setStudentResults);
+        }
+    }, [token, user.role, user.id]);
+
+    const handleAddResult = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        
+        const res = await fetch('/api/results', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            alert('Result added successfully');
+            setIsAdding(false);
+        }
+    };
+
+    if (user.role === 'student') {
+        return (
+            <div className="space-y-8">
+                <div className="bg-[#7C3AED] p-10 rounded-[40px] text-white flex justify-between items-center">
+                    <div>
+                        <p className="text-purple-200 font-bold uppercase tracking-widest text-xs mb-2">Current CGPA</p>
+                        <h2 className="text-5xl font-bold">{studentResults?.cgpa || '0.00'}</h2>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-purple-200 font-bold uppercase tracking-widest text-xs mb-2">Current Semester</p>
+                        <h2 className="text-3xl font-bold">Sem {studentResults?.semester}</h2>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
+                    <div className="p-8 border-b border-gray-50">
+                        <h3 className="text-xl font-bold">Semester-wise Results</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
+                                <tr>
+                                    <th className="px-8 py-4">Semester</th>
+                                    <th className="px-8 py-4">Subject</th>
+                                    <th className="px-8 py-4">Marks</th>
+                                    <th className="px-8 py-4">Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {studentResults?.results.map((r: any, i: number) => (
+                                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-8 py-5 font-bold text-[#1F2937]">Sem {r.semester}</td>
+                                        <td className="px-8 py-5 text-sm text-[#6B7280]">{r.subject_name} ({r.subject_code})</td>
+                                        <td className="px-8 py-5 text-sm font-bold">{r.marks}</td>
+                                        <td className="px-8 py-5">
+                                            <span className="px-3 py-1 bg-purple-100 text-[#7C3AED] rounded-full text-[10px] font-bold uppercase">
+                                                {r.grade}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-8">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-[#1F2937]">Result Management</h2>
+                <button 
+                    onClick={() => setIsAdding(true)}
+                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold"
+                >
+                    Add Result
+                </button>
+            </div>
+
+            <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
+                        <tr>
+                            <th className="px-8 py-4">Student</th>
+                            <th className="px-8 py-4">Roll No</th>
+                            <th className="px-8 py-4">CGPA</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {students.map((s, i) => (
+                            <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
+                                <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
+                                <td className="px-8 py-5 font-bold text-[#7C3AED]">{s.cgpa}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {isAdding && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-6">Add Result</h3>
+                        <form className="space-y-4" onSubmit={handleAddResult}>
+                            <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="">Select Student</option>
+                                {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                            </select>
+                            <input name="semester" type="number" placeholder="Semester" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <select name="subjectId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="">Select Subject</option>
+                                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                            <input name="marks" type="number" placeholder="Marks" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="grade" placeholder="Grade (A, B+, etc.)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Result</button>
+                            <button type="button" onClick={() => setIsAdding(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function ProfileView({ token, user }: { token: string, user: any }) {
+    const [profile, setProfile] = useState<any>(null);
+    const [isEditing, setIsEditing] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/student/profile', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(async res => (res.ok ? await safeJson(res) : null))
+            .then(setProfile);
+    }, [token]);
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        
+        const res = await fetch('/api/student/profile/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            setProfile({ ...profile, ...payload });
+            setIsEditing(false);
+        }
+    };
+
+    if (!profile) return <div>Loading Profile...</div>;
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-8">
+            <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32" />
+                <div className="relative flex items-center gap-8">
+                    <div className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold">
+                        {profile.name[0]}
+                    </div>
+                    <div>
+                        <h2 className="text-3xl font-bold text-[#1F2937] mb-2">{profile.name}</h2>
+                        <p className="text-[#6B7280] font-medium">{profile.department} • Semester {profile.semester}</p>
+                        <div className="flex gap-4 mt-4">
+                            <button 
+                                onClick={() => setIsEditing(true)}
+                                className="px-6 py-2 bg-[#7C3AED] text-white rounded-xl text-sm font-bold"
+                            >
+                                Edit Profile
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                    <h3 className="text-lg font-bold mb-6 flex items-center gap-3">
+                        <User className="text-[#7C3AED] w-5 h-5" />
+                        Contact Information
+                    </h3>
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Email Address</p>
+                            <p className="text-[#1F2937] font-medium">{profile.email}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phone Number</p>
+                            <p className="text-[#1F2937] font-medium">{profile.contact || 'Not provided'}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Roll Number</p>
+                            <p className="text-[#1F2937] font-medium">{profile.roll_number}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                    <h3 className="text-lg font-bold mb-6 flex items-center gap-3">
+                        <GraduationCap className="text-[#7C3AED] w-5 h-5" />
+                        Academic & Achievements
+                    </h3>
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Current CGPA</p>
+                            <p className="text-2xl font-bold text-[#7C3AED]">{profile.cgpa}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Achievements</p>
+                            <p className="text-[#6B7280] text-sm leading-relaxed">
+                                {profile.achievements || 'No achievements listed yet. Keep working hard!'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {isEditing && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-6">Edit Profile</h3>
+                        <form className="space-y-4" onSubmit={handleUpdate}>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Phone Number</label>
+                                <input name="contact" defaultValue={profile.contact} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Achievements</label>
+                                <textarea name="achievements" defaultValue={profile.achievements} className="w-full h-32 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
+                            </div>
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Changes</button>
+                            <button type="button" onClick={() => setIsEditing(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

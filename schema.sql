@@ -155,3 +155,24 @@ CREATE TABLE IF NOT EXISTS notifications (
     target_role TEXT, -- 'student', 'faculty', 'all'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Results
+CREATE TABLE IF NOT EXISTS results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    semester INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    marks INTEGER NOT NULL,
+    grade TEXT NOT NULL,
+    FOREIGN KEY (student_id) REFERENCES students(id),
+    FOREIGN KEY (subject_id) REFERENCES subjects(id)
+);
+
+-- Event Attendance (for roll number entry in events dashboard)
+CREATE TABLE IF NOT EXISTS event_attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    student_roll_number TEXT NOT NULL,
+    marked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES events(id)
+);

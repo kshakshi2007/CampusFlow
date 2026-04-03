@@ -19,6 +19,12 @@ db.exec(schema);
 try {
     db.prepare("ALTER TABLE students ADD COLUMN markscard_url TEXT").run();
 } catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN contact TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN achievements TEXT").run();
+} catch (e) {}
 
 // Seed initial data if empty or missing librarian
 const librarianExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'librarian'").get() as { count: number };
@@ -144,12 +150,12 @@ async function startServer() {
 
         const attendance = db.prepare(`
             SELECT sub.name, 
-                   COUNT(CASE WHEN a.status = 'present' THEN 1 END) * 100.0 / COUNT(*) as percentage
-            FROM attendance a
-            JOIN subjects sub ON a.subject_id = sub.id
-            WHERE a.student_id = ?
+                   COUNT(CASE WHEN a.status = 'present' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) as percentage
+            FROM subjects sub
+            LEFT JOIN attendance a ON sub.id = a.subject_id AND a.student_id = ?
+            WHERE sub.semester = ? AND sub.department = ?
             GROUP BY sub.id
-        `).all(student.id);
+        `).all(student.id, student.semester, student.department);
 
         const fees = db.prepare("SELECT * FROM fees WHERE student_id = ?").all(student.id);
         const notifications = db.prepare("SELECT * FROM notifications WHERE target_role IN ('student', 'all') ORDER BY created_at DESC LIMIT 5").all();
@@ -157,7 +163,45 @@ async function startServer() {
         res.json({ student, attendance, fees, notifications });
     });
 
-    // Materials
+    // Student Profile
+    app.get("/api/student/profile", authenticateToken, (req: any, res) => {
+        const student = db.prepare(`
+            SELECT s.*, u.name, u.email, u.department 
+            FROM students s 
+            JOIN users u ON s.user_id = u.id 
+            WHERE u.id = ?
+        `).get(req.user.id) as any;
+        res.json(student);
+    });
+
+    app.post("/api/student/profile/update", authenticateToken, (req: any, res) => {
+        const { contact, achievements } = req.body;
+        db.prepare("UPDATE students SET contact = ?, achievements = ? WHERE user_id = ?").run(contact, achievements, req.user.id);
+        res.json({ success: true });
+    });
+
+    // Subjects
+    app.get("/api/subjects", authenticateToken, (req, res) => {
+        const subjects = db.prepare("SELECT * FROM subjects").all();
+        res.json(subjects);
+    });
+
+    // Attendance Stats for Graph
+    app.get("/api/attendance/stats", authenticateToken, (req: any, res) => {
+        const student = db.prepare("SELECT id FROM students WHERE user_id = ?").get(req.user.id) as any;
+        if (!student) return res.status(400).json({ message: "Student not found" });
+
+        const stats = db.prepare(`
+            SELECT sub.name as subject,
+                   date,
+                   status
+            FROM attendance a
+            JOIN subjects sub ON a.subject_id = sub.id
+            WHERE a.student_id = ?
+            ORDER BY date ASC
+        `).all(student.id);
+        res.json(stats);
+    });
     app.get("/api/materials", authenticateToken, (req, res) => {
         const materials = db.prepare(`
             SELECT m.*, s.name as subject_name, u.name as uploader_name
@@ -404,6 +448,73 @@ async function startServer() {
         res.json({ success: true });
     });
 
+    // Admin: Get Students
+    app.get("/api/admin/students", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const students = db.prepare(`
+            SELECT s.*, u.name, u.email, u.department 
+            FROM students s 
+            JOIN users u ON s.user_id = u.id
+        `).all();
+        res.json(students);
+    });
+
+    // Results
+    app.get("/api/results/student/:userId", authenticateToken, (req: any, res) => {
+        const userId = req.params.userId;
+        const student = db.prepare("SELECT id, semester, cgpa FROM students WHERE user_id = ?").get(userId) as any;
+        if (!student) return res.status(404).json({ message: "Student not found" });
+
+        const results = db.prepare(`
+            SELECT r.*, sub.name as subject_name, sub.code as subject_code
+            FROM results r
+            JOIN subjects sub ON r.subject_id = sub.id
+            WHERE r.student_id = ?
+            ORDER BY r.semester DESC
+        `).all(student.id);
+
+        res.json({ results, cgpa: student.cgpa, semester: student.semester });
+    });
+
+    app.post("/api/results", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const { studentId, semester, subjectId, marks, grade } = req.body;
+        
+        db.prepare("INSERT INTO results (student_id, semester, subject_id, marks, grade) VALUES (?, ?, ?, ?, ?)").run(
+            studentId, semester, subjectId, marks, grade
+        );
+
+        // Recalculate CGPA (simplified)
+        const allResults = db.prepare("SELECT marks FROM results WHERE student_id = ?").all(studentId) as any[];
+        const avgMarks = allResults.reduce((acc, r) => acc + r.marks, 0) / allResults.length;
+        const newCgpa = (avgMarks / 10).toFixed(2);
+        db.prepare("UPDATE students SET cgpa = ? WHERE id = ?").run(newCgpa, studentId);
+
+        res.json({ success: true });
+    });
+
+    // Event Attendance Alert
+    app.post("/api/events/attendance", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { eventId, rollNumbers } = req.body; // rollNumbers is a string of comma separated values
+        
+        const rolls = rollNumbers.split(",").map((r: string) => r.trim());
+        const event = db.prepare("SELECT title FROM events WHERE id = ?").get(eventId) as any;
+
+        for (const roll of rolls) {
+            db.prepare("INSERT INTO event_attendance (event_id, student_roll_number) VALUES (?, ?)").run(eventId, roll);
+        }
+
+        // Send alert to faculty
+        db.prepare("INSERT INTO notifications (title, message, target_role) VALUES (?, ?, ?)").run(
+            "Event Attendance Alert",
+            `Students with roll numbers: ${rollNumbers} attended the event "${event.title}". Please mark their attendance accordingly.`,
+            "faculty"
+        );
+
+        res.json({ success: true });
+    });
+
     // Admin: Add Fees
     app.post("/api/admin/fees", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
@@ -436,6 +547,12 @@ async function startServer() {
             res.sendFile(path.join(distPath, "index.html"));
         });
     }
+
+    // Global Error Handler
+    app.use((err: any, req: any, res: any, next: any) => {
+        console.error(err.stack);
+        res.status(500).json({ message: "Internal Server Error", error: err.message });
+    });
 
     app.listen(PORT, "0.0.0.0", () => {
         console.log(`Server running on http://localhost:${PORT}`);
