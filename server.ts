@@ -25,6 +25,30 @@ try {
 try {
     db.prepare("ALTER TABLE students ADD COLUMN achievements TEXT").run();
 } catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN address TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN dob TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN gender TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN blood_group TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN father_name TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN mother_name TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN guardian_contact TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN enrollment_year INTEGER").run();
+} catch (e) {}
 
 // Seed initial data if empty or missing librarian
 const librarianExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'librarian'").get() as { count: number };
@@ -166,17 +190,35 @@ async function startServer() {
     // Student Profile
     app.get("/api/student/profile", authenticateToken, (req: any, res) => {
         const student = db.prepare(`
-            SELECT s.*, u.name, u.email, u.department 
-            FROM students s 
-            JOIN users u ON s.user_id = u.id 
+            SELECT s.*, u.name, u.email, u.department, u.role
+            FROM users u
+            LEFT JOIN students s ON s.user_id = u.id 
             WHERE u.id = ?
         `).get(req.user.id) as any;
         res.json(student);
     });
 
     app.post("/api/student/profile/update", authenticateToken, (req: any, res) => {
-        const { contact, achievements } = req.body;
-        db.prepare("UPDATE students SET contact = ?, achievements = ? WHERE user_id = ?").run(contact, achievements, req.user.id);
+        const { 
+            contact, achievements, address, dob, gender, 
+            blood_group, father_name, mother_name, 
+            guardian_contact, enrollment_year 
+        } = req.body;
+        
+        const user = db.prepare("SELECT role FROM users WHERE id = ?").get(req.user.id) as any;
+        if (user.role === 'student') {
+            db.prepare(`
+                UPDATE students SET 
+                    contact = ?, achievements = ?, address = ?, dob = ?, 
+                    gender = ?, blood_group = ?, father_name = ?, 
+                    mother_name = ?, guardian_contact = ?, enrollment_year = ? 
+                WHERE user_id = ?
+            `).run(
+                contact, achievements, address, dob, gender, 
+                blood_group, father_name, mother_name, 
+                guardian_contact, enrollment_year, req.user.id
+            );
+        }
         res.json({ success: true });
     });
 
@@ -244,6 +286,19 @@ async function startServer() {
         }
     });
 
+    // Admin: Get registered students for an event
+    app.get("/api/events/:id/registrations", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const registrations = db.prepare(`
+            SELECT u.name, s.roll_number, u.email
+            FROM event_registrations er
+            JOIN students s ON er.student_id = s.id
+            JOIN users u ON s.user_id = u.id
+            WHERE er.event_id = ?
+        `).all(req.params.id);
+        res.json(registrations);
+    });
+
     // Lost & Found
     app.get("/api/lost-found", authenticateToken, (req, res) => {
         const items = db.prepare("SELECT lf.*, u.name as reporter_name FROM lost_found lf JOIN users u ON lf.reported_by = u.id ORDER BY created_at DESC").all();
@@ -290,7 +345,13 @@ async function startServer() {
             LIMIT 5
         `).all();
 
-        res.json({ stats, topStudents });
+        const notifications = db.prepare(`
+            SELECT * FROM notifications 
+            WHERE target_role IN (?, 'all') 
+            ORDER BY created_at DESC LIMIT 5
+        `).all(req.user.role);
+
+        res.json({ stats, topStudents, notifications });
     });
 
     // Faculty: Update Attendance

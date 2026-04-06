@@ -43,9 +43,6 @@ export default function LandingPage() {
                         <Link to="/login" className="px-8 py-4 bg-[#7C3AED] text-white rounded-full font-semibold flex items-center gap-2 hover:bg-[#6D28D9] transition-all group shadow-xl shadow-purple-200">
                             Get Started <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                         </Link>
-                        <button className="px-8 py-4 bg-white text-[#1F2937] rounded-full font-semibold border border-[#E5E7EB] hover:bg-[#F9FAFB] transition-all">
-                            Watch Demo
-                        </button>
                     </div>
 
                     <div className="mt-16 flex items-center gap-8">

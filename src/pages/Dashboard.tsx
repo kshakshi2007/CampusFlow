@@ -3,7 +3,8 @@ import { motion } from 'motion/react';
 import { 
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
-    ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText
+    ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText,
+    MapPin, Phone
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -281,6 +282,28 @@ function FacultyDashboard({ data, user }: { data: any, user: any }) {
                     <AttendanceModal token={data?.token} />
                 </div>
             </div>
+
+            <div className="mt-10 bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                <h2 className="text-xl font-bold text-[#1F2937] mb-6">Notifications & Alerts</h2>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {data?.notifications?.map((notif: any, i: number) => (
+                        <div key={i} className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                    <Bell className="w-5 h-5 text-orange-500" />
+                                </div>
+                                <p className="font-bold text-[#1F2937] text-sm">{notif.title}</p>
+                            </div>
+                            <p className="text-xs text-[#6B7280] leading-relaxed">{notif.message}</p>
+                        </div>
+                    ))}
+                    {(!data?.notifications || data.notifications.length === 0) && (
+                        <div className="col-span-full py-10 text-center text-gray-400 italic">
+                            No new notifications.
+                        </div>
+                    )}
+                </div>
+            </div>
         </>
     );
 }
@@ -531,7 +554,14 @@ function EventsView({ token, user }: { token: string, user: any }) {
     const [events, setEvents] = useState<any[]>([]);
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
+    const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+    const [registrationStatus, setRegistrationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [registrationError, setRegistrationError] = useState('');
+    const [isRegistrationsModalOpen, setIsRegistrationsModalOpen] = useState(false);
+    const [registrations, setRegistrations] = useState<any[]>([]);
     const [selectedEvent, setSelectedEvent] = useState<any>(null);
+    const [registering, setRegistering] = useState(false);
+    const [loadingRegistrations, setLoadingRegistrations] = useState(false);
 
     useEffect(() => {
         fetch('/api/events', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -574,6 +604,48 @@ function EventsView({ token, user }: { token: string, user: any }) {
         }
     };
 
+    const handleRegister = async () => {
+        if (!selectedEvent) return;
+        setRegistrationStatus('loading');
+        setRegistrationError('');
+        try {
+            const res = await fetch('/api/events/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ eventId: selectedEvent.id })
+            });
+            const data = await safeJson(res);
+            if (res.ok) {
+                setRegistrationStatus('success');
+                // Refresh events to show updated status if needed (though currently we don't show "registered" on the card)
+            } else {
+                setRegistrationStatus('error');
+                setRegistrationError(data?.message || 'Registration failed');
+            }
+        } catch (err) {
+            setRegistrationStatus('error');
+            setRegistrationError('Something went wrong. Please try again.');
+        }
+    };
+
+    const fetchRegistrations = async (eventId: number) => {
+        setLoadingRegistrations(true);
+        try {
+            const res = await fetch(`/api/events/${eventId}/registrations`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await safeJson(res);
+            if (res.ok) {
+                setRegistrations(data || []);
+                setIsRegistrationsModalOpen(true);
+            }
+        } catch (err) {
+            console.error("Error fetching registrations:", err);
+        } finally {
+            setLoadingRegistrations(false);
+        }
+    };
+
     return (
         <div className="space-y-8">
             {(user.role === 'admin' || user.role === 'faculty') && (
@@ -600,7 +672,20 @@ function EventsView({ token, user }: { token: string, user: any }) {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <span className="text-xs font-bold px-3 py-1 bg-purple-100 text-[#7C3AED] rounded-full uppercase">{e.category}</span>
-                                    <button className="text-sm font-bold text-[#7C3AED] hover:underline">Register Now</button>
+                                    <button 
+                                        onClick={() => { setSelectedEvent(e); setIsRegisterOpen(true); }}
+                                        className="text-sm font-bold text-[#7C3AED] hover:underline"
+                                    >
+                                        Register Now
+                                    </button>
+                                    {user.role === 'admin' && e.category === 'hackathon' && (
+                                        <button 
+                                            onClick={() => { setSelectedEvent(e); fetchRegistrations(e.id); }}
+                                            className="text-sm font-bold text-blue-600 hover:underline"
+                                        >
+                                            View Registrations
+                                        </button>
+                                    )}
                                 </div>
                                 {user.role === 'admin' && (
                                     <button 
@@ -651,6 +736,130 @@ function EventsView({ token, user }: { token: string, user: any }) {
                             <button type="submit" className="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold">Send Alert to Faculty</button>
                             <button type="button" onClick={() => setIsAttendanceOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {isRegisterOpen && selectedEvent && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white w-full max-w-md rounded-[40px] p-10 relative text-center"
+                    >
+                        {registrationStatus === 'idle' || registrationStatus === 'loading' ? (
+                            <>
+                                <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <Calendar className="w-10 h-10 text-[#7C3AED]" />
+                                </div>
+                                <h3 className="text-2xl font-bold mb-4 text-[#1F2937]">Confirm Registration</h3>
+                                <p className="text-[#6B7280] mb-8 leading-relaxed">
+                                    Are you sure you want to register for <br/>
+                                    <span className="font-bold text-[#7C3AED]">{selectedEvent.title}</span>?
+                                </p>
+                                <div className="space-y-3">
+                                    <button 
+                                        onClick={handleRegister}
+                                        disabled={registrationStatus === 'loading'}
+                                        className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold hover:bg-[#6D28D9] transition-all shadow-lg shadow-purple-100 disabled:opacity-50"
+                                    >
+                                        {registrationStatus === 'loading' ? 'Registering...' : 'Confirm Registration'}
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsRegisterOpen(false)} 
+                                        disabled={registrationStatus === 'loading'}
+                                        className="w-full py-2 text-gray-400 font-medium hover:text-gray-600 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </>
+                        ) : registrationStatus === 'success' ? (
+                            <>
+                                <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <ShieldCheck className="w-10 h-10 text-green-500" />
+                                </div>
+                                <h3 className="text-2xl font-bold mb-4 text-[#1F2937]">Registration Successful!</h3>
+                                <p className="text-[#6B7280] mb-8 leading-relaxed">
+                                    You have been successfully registered for <br/>
+                                    <span className="font-bold text-green-600">{selectedEvent.title}</span>.
+                                </p>
+                                <button 
+                                    onClick={() => {
+                                        setIsRegisterOpen(false);
+                                        setRegistrationStatus('idle');
+                                    }}
+                                    className="w-full py-4 bg-green-500 text-white rounded-2xl font-bold hover:bg-green-600 transition-all shadow-lg shadow-green-100"
+                                >
+                                    Done
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <AlertCircle className="w-10 h-10 text-red-500" />
+                                </div>
+                                <h3 className="text-2xl font-bold mb-4 text-[#1F2937]">Registration Failed</h3>
+                                <p className="text-[#6B7280] mb-8 leading-relaxed">
+                                    {registrationError || 'We encountered an error while processing your registration.'}
+                                </p>
+                                <div className="space-y-3">
+                                    <button 
+                                        onClick={() => setRegistrationStatus('idle')}
+                                        className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-100"
+                                    >
+                                        Try Again
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            setIsRegisterOpen(false);
+                                            setRegistrationStatus('idle');
+                                        }}
+                                        className="w-full py-2 text-gray-400 font-medium hover:text-gray-600 transition-colors"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </motion.div>
+                </div>
+            )}
+
+            {isRegistrationsModalOpen && selectedEvent && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-2xl rounded-[40px] p-10 relative max-h-[80vh] flex flex-col">
+                        <button onClick={() => setIsRegistrationsModalOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                            <LogOut className="w-6 h-6 rotate-180" />
+                        </button>
+                        <h3 className="text-2xl font-bold text-[#1F2937] mb-2">Registered Students</h3>
+                        <p className="text-sm text-[#6B7280] mb-6">Total registrations for "{selectedEvent.title}": {registrations.length}</p>
+                        
+                        <div className="overflow-y-auto flex-1 pr-2">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold sticky top-0">
+                                    <tr>
+                                        <th className="px-6 py-4">Name</th>
+                                        <th className="px-6 py-4">Roll Number</th>
+                                        <th className="px-6 py-4">Email</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {registrations.map((reg, i) => (
+                                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4 font-bold text-[#1F2937] text-sm">{reg.name}</td>
+                                            <td className="px-6 py-4 text-sm text-[#6B7280]">{reg.roll_number}</td>
+                                            <td className="px-6 py-4 text-sm text-[#6B7280]">{reg.email}</td>
+                                        </tr>
+                                    ))}
+                                    {registrations.length === 0 && (
+                                        <tr>
+                                            <td colSpan={3} className="px-6 py-10 text-center text-gray-400 italic">No registrations yet.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1801,91 +2010,202 @@ function ProfileView({ token, user }: { token: string, user: any }) {
         }
     };
 
-    if (!profile) return <div>Loading Profile...</div>;
+    if (!profile) return (
+        <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+            <p className="text-gray-500 font-medium">Loading Profile...</p>
+        </div>
+    );
+
+    const isStudent = profile.role === 'student';
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-5xl mx-auto space-y-8 pb-20">
+            {/* Header Card */}
             <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32" />
-                <div className="relative flex items-center gap-8">
-                    <div className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold">
+                <div className="relative flex flex-col md:flex-row items-center gap-8">
+                    <div className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-purple-200">
                         {profile.name[0]}
                     </div>
-                    <div>
-                        <h2 className="text-3xl font-bold text-[#1F2937] mb-2">{profile.name}</h2>
-                        <p className="text-[#6B7280] font-medium">{profile.department} • Semester {profile.semester}</p>
-                        <div className="flex gap-4 mt-4">
-                            <button 
-                                onClick={() => setIsEditing(true)}
-                                className="px-6 py-2 bg-[#7C3AED] text-white rounded-xl text-sm font-bold"
-                            >
-                                Edit Profile
-                            </button>
+                    <div className="text-center md:text-left flex-1">
+                        <div className="flex flex-wrap items-center gap-3 mb-2 justify-center md:justify-start">
+                            <h2 className="text-3xl font-bold text-[#1F2937]">{profile.name}</h2>
+                            <span className="px-3 py-1 bg-purple-100 text-[#7C3AED] text-xs font-bold rounded-full uppercase tracking-wider">
+                                {profile.role}
+                            </span>
                         </div>
+                        <p className="text-[#6B7280] font-medium">
+                            {profile.department} {isStudent && `• Semester ${profile.semester}`}
+                        </p>
+                        {isStudent && (
+                            <div className="flex gap-4 mt-6 justify-center md:justify-start">
+                                <button 
+                                    onClick={() => setIsEditing(true)}
+                                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl text-sm font-bold hover:bg-[#6D28D9] transition-all shadow-lg shadow-purple-100"
+                                >
+                                    Edit Profile
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8">
-                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
-                    <h3 className="text-lg font-bold mb-6 flex items-center gap-3">
-                        <User className="text-[#7C3AED] w-5 h-5" />
-                        Contact Information
-                    </h3>
-                    <div className="space-y-4">
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Email Address</p>
-                            <p className="text-[#1F2937] font-medium">{profile.email}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phone Number</p>
-                            <p className="text-[#1F2937] font-medium">{profile.contact || 'Not provided'}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Roll Number</p>
-                            <p className="text-[#1F2937] font-medium">{profile.roll_number}</p>
+            <div className="grid lg:grid-cols-3 gap-8">
+                {/* Left Column: Personal & Contact */}
+                <div className="lg:col-span-2 space-y-8">
+                    {/* Personal Information */}
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                        <h3 className="text-lg font-bold mb-8 flex items-center gap-3 text-[#1F2937]">
+                            <User className="text-[#7C3AED] w-5 h-5" />
+                            Personal Information
+                        </h3>
+                        <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
+                            <InfoField label="Full Name" value={profile.name} />
+                            <InfoField label="Email Address" value={profile.email} />
+                            {isStudent && (
+                                <>
+                                    <InfoField label="Date of Birth" value={profile.dob || 'Not set'} />
+                                    <InfoField label="Gender" value={profile.gender || 'Not set'} />
+                                    <InfoField label="Blood Group" value={profile.blood_group || 'Not set'} />
+                                    <InfoField label="Enrollment Year" value={profile.enrollment_year || 'Not set'} />
+                                </>
+                            )}
                         </div>
                     </div>
-                </div>
 
-                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
-                    <h3 className="text-lg font-bold mb-6 flex items-center gap-3">
-                        <GraduationCap className="text-[#7C3AED] w-5 h-5" />
-                        Academic & Achievements
-                    </h3>
-                    <div className="space-y-4">
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Current CGPA</p>
-                            <p className="text-2xl font-bold text-[#7C3AED]">{profile.cgpa}</p>
+                    {/* Family Details (Student Only) */}
+                    {isStudent && (
+                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                            <h3 className="text-lg font-bold mb-8 flex items-center gap-3 text-[#1F2937]">
+                                <Users className="text-[#7C3AED] w-5 h-5" />
+                                Family Details
+                            </h3>
+                            <div className="grid md:grid-cols-2 gap-x-12 gap-y-8">
+                                <InfoField label="Father's Name" value={profile.father_name || 'Not set'} />
+                                <InfoField label="Mother's Name" value={profile.mother_name || 'Not set'} />
+                                <InfoField label="Guardian Contact" value={profile.guardian_contact || 'Not set'} />
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Achievements</p>
-                            <p className="text-[#6B7280] text-sm leading-relaxed">
-                                {profile.achievements || 'No achievements listed yet. Keep working hard!'}
+                    )}
+
+                    {/* Address (Student Only) */}
+                    {isStudent && (
+                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                            <h3 className="text-lg font-bold mb-8 flex items-center gap-3 text-[#1F2937]">
+                                <MapPin className="text-[#7C3AED] w-5 h-5" />
+                                Permanent Address
+                            </h3>
+                            <p className="text-[#6B7280] leading-relaxed">
+                                {profile.address || 'No address provided yet.'}
                             </p>
                         </div>
+                    )}
+                </div>
+
+                {/* Right Column: Academic & Achievements */}
+                <div className="space-y-8">
+                    {isStudent && (
+                        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                            <h3 className="text-lg font-bold mb-8 flex items-center gap-3 text-[#1F2937]">
+                                <GraduationCap className="text-[#7C3AED] w-5 h-5" />
+                                Academic Status
+                            </h3>
+                            <div className="space-y-6">
+                                <div className="p-6 bg-purple-50 rounded-3xl text-center">
+                                    <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1">Current CGPA</p>
+                                    <p className="text-4xl font-black text-[#7C3AED]">{profile.cgpa}</p>
+                                </div>
+                                <div className="space-y-4">
+                                    <InfoField label="Roll Number" value={profile.roll_number} />
+                                    <InfoField label="Semester" value={profile.semester} />
+                                    <InfoField label="Department" value={profile.department} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                        <h3 className="text-lg font-bold mb-6 flex items-center gap-3 text-[#1F2937]">
+                            <ShieldCheck className="text-[#7C3AED] w-5 h-5" />
+                            Achievements
+                        </h3>
+                        <p className="text-[#6B7280] text-sm leading-relaxed italic">
+                            {profile.achievements || 'No achievements listed yet.'}
+                        </p>
+                    </div>
+
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                        <h3 className="text-lg font-bold mb-6 flex items-center gap-3 text-[#1F2937]">
+                            <Phone className="text-[#7C3AED] w-5 h-5" />
+                            Contact Details
+                        </h3>
+                        <InfoField label="Primary Contact" value={profile.contact || 'Not set'} />
                     </div>
                 </div>
             </div>
 
+            {/* Edit Modal */}
             {isEditing && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
-                        <h3 className="text-2xl font-bold mb-6">Edit Profile</h3>
-                        <form className="space-y-4" onSubmit={handleUpdate}>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white w-full max-w-2xl rounded-[40px] p-10 relative my-8"
+                    >
+                        <h3 className="text-2xl font-bold mb-8">Update Profile Information</h3>
+                        <form className="space-y-6" onSubmit={handleUpdate}>
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <EditField label="Phone Number" name="contact" defaultValue={profile.contact} />
+                                <EditField label="Date of Birth" name="dob" type="date" defaultValue={profile.dob} />
+                                <EditField label="Gender" name="gender" type="select" options={['Male', 'Female', 'Other']} defaultValue={profile.gender} />
+                                <EditField label="Blood Group" name="blood_group" defaultValue={profile.blood_group} />
+                                <EditField label="Father's Name" name="father_name" defaultValue={profile.father_name} />
+                                <EditField label="Mother's Name" name="mother_name" defaultValue={profile.mother_name} />
+                                <EditField label="Guardian Contact" name="guardian_contact" defaultValue={profile.guardian_contact} />
+                                <EditField label="Enrollment Year" name="enrollment_year" type="number" defaultValue={profile.enrollment_year} />
+                            </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Phone Number</label>
-                                <input name="contact" defaultValue={profile.contact} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Permanent Address</label>
+                                <textarea name="address" defaultValue={profile.address} className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Achievements</label>
-                                <textarea name="achievements" defaultValue={profile.achievements} className="w-full h-32 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
+                                <textarea name="achievements" defaultValue={profile.achievements} className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
                             </div>
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Changes</button>
-                            <button type="button" onClick={() => setIsEditing(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                            <div className="flex gap-4 pt-4">
+                                <button type="submit" className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Save Profile</button>
+                                <button type="button" onClick={() => setIsEditing(false)} className="px-8 py-4 bg-gray-100 text-gray-500 rounded-2xl font-bold">Cancel</button>
+                            </div>
                         </form>
-                    </div>
+                    </motion.div>
                 </div>
+            )}
+        </div>
+    );
+}
+
+function InfoField({ label, value }: { label: string, value: any }) {
+    return (
+        <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
+            <p className="text-[#1F2937] font-semibold">{value || '—'}</p>
+        </div>
+    );
+}
+
+function EditField({ label, name, defaultValue, type = 'text', options = [] }: { label: string, name: string, defaultValue: any, type?: string, options?: string[] }) {
+    return (
+        <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{label}</label>
+            {type === 'select' ? (
+                <select name={name} defaultValue={defaultValue} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                    <option value="">Select {label}</option>
+                    {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+            ) : (
+                <input type={type} name={name} defaultValue={defaultValue} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
             )}
         </div>
     );
