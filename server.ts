@@ -49,6 +49,18 @@ try {
 try {
     db.prepare("ALTER TABLE students ADD COLUMN enrollment_year INTEGER").run();
 } catch (e) {}
+try {
+    db.prepare("ALTER TABLE notifications ADD COLUMN user_id INTEGER").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE events ADD COLUMN organizer TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE events ADD COLUMN department TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE events ADD COLUMN created_by INTEGER").run();
+} catch (e) {}
 
 // Seed initial data if empty or missing librarian
 const librarianExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'librarian'").get() as { count: number };
@@ -171,6 +183,15 @@ async function startServer() {
             JOIN users u ON s.user_id = u.id 
             WHERE u.id = ?
         `).get(req.user.id) as any;
+
+        if (!student) {
+            return res.json({ 
+                student: { name: req.user.name, email: req.user.email, role: req.user.role },
+                attendance: [],
+                fees: [],
+                notifications: db.prepare("SELECT * FROM notifications WHERE target_role IN ('student', 'all') ORDER BY created_at DESC LIMIT 5").all()
+            });
+        }
 
         const attendance = db.prepare(`
             SELECT sub.name, 
@@ -347,9 +368,9 @@ async function startServer() {
 
         const notifications = db.prepare(`
             SELECT * FROM notifications 
-            WHERE target_role IN (?, 'all') 
-            ORDER BY created_at DESC LIMIT 5
-        `).all(req.user.role);
+            WHERE target_role IN (?, 'all') OR user_id = ?
+            ORDER BY created_at DESC LIMIT 10
+        `).all(req.user.role, req.user.id);
 
         res.json({ stats, topStudents, notifications });
     });
@@ -462,10 +483,53 @@ async function startServer() {
     // Faculty/Admin: Add Event
     app.post("/api/events", authenticateToken, (req: any, res) => {
         if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-        const { title, description, date, venue, category } = req.body;
-        db.prepare("INSERT INTO events (title, description, date, venue, category, created_by) VALUES (?, ?, ?, ?, ?, ?)").run(
-            title, description, date, venue, category, req.user.id
+        const { title, description, date, venue, category, organizer, department } = req.body;
+        db.prepare("INSERT INTO events (title, description, date, venue, category, organizer, department, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+            title, description, date, venue, category, organizer, department, req.user.id
         );
+        
+        // Notify all students about new event
+        db.prepare("INSERT INTO notifications (title, message, target_role) VALUES (?, ?, ?)").run(
+            "New Event Added", `Register now for ${title} happening on ${date}!`, "student"
+        );
+        
+        res.json({ success: true });
+    });
+
+    // Event Resources
+    app.get("/api/events/:id/resources", authenticateToken, (req: any, res) => {
+        const resources = db.prepare("SELECT * FROM event_resources WHERE event_id = ?").all(req.params.id);
+        res.json(resources);
+    });
+
+    app.post("/api/events/:id/resources", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { fileType, fileUrl, title } = req.body;
+        db.prepare("INSERT INTO event_resources (event_id, file_type, file_url, title) VALUES (?, ?, ?, ?)").run(
+            req.params.id, fileType, fileUrl, title
+        );
+        res.json({ success: true });
+    });
+
+    // Event Leaderboard
+    app.get("/api/events/:id/leaderboard", authenticateToken, (req: any, res) => {
+        const leaderboard = db.prepare("SELECT * FROM event_leaderboard WHERE event_id = ? ORDER BY position ASC").all(req.params.id);
+        res.json(leaderboard);
+    });
+
+    app.post("/api/events/:id/leaderboard", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { studentName, position, department } = req.body;
+        db.prepare("INSERT INTO event_leaderboard (event_id, student_name, position, department) VALUES (?, ?, ?, ?)").run(
+            req.params.id, studentName, position, department
+        );
+        
+        // Notify students about results
+        const event = db.prepare("SELECT title FROM events WHERE id = ?").get(req.params.id) as any;
+        db.prepare("INSERT INTO notifications (title, message, target_role) VALUES (?, ?, ?)").run(
+            "Event Results Announced", `The leaderboard for ${event.title} is now available!`, "student"
+        );
+        
         res.json({ success: true });
     });
 
@@ -487,6 +551,22 @@ async function startServer() {
             title, type, subjectId, semester, url, req.user.id
         );
         res.json({ success: true });
+    });
+
+    // Search Students
+    app.get("/api/students/search", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const query = req.query.q;
+        if (!query) return res.json([]);
+        
+        const students = db.prepare(`
+            SELECT s.*, u.name, u.email, u.department 
+            FROM students s 
+            JOIN users u ON s.user_id = u.id
+            WHERE u.name LIKE ? OR s.roll_number LIKE ?
+            LIMIT 10
+        `).all(`%${query}%`, `%${query}%`);
+        res.json(students);
     });
 
     // Admin: Get all student fees
@@ -594,7 +674,82 @@ async function startServer() {
         res.json(fees);
     });
 
-    // Vite middleware for development
+    // Admin Profile
+    app.get("/api/admin/profile", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const admin = db.prepare("SELECT id, name, email, role FROM users WHERE id = ?").get(req.user.id) as any;
+        const totalStudents = db.prepare("SELECT COUNT(*) as count FROM students").get() as any;
+        res.json({ ...admin, totalStudents: totalStudents.count });
+    });
+
+    app.post("/api/admin/profile/update", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { name, email } = req.body;
+        db.prepare("UPDATE users SET name = ?, email = ? WHERE id = ?").run(name, email, req.user.id);
+        res.json({ success: true });
+    });
+
+    // Admin: Mark Attendance
+    app.post("/api/admin/attendance", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { studentId, subjectId, date, status } = req.body;
+        db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
+            studentId, subjectId, date, status
+        );
+        res.json({ success: true });
+    });
+
+    // Alumni Management
+    app.get("/api/alumni", authenticateToken, (req, res) => {
+        const alumni = db.prepare("SELECT * FROM alumni ORDER BY batch_year DESC").all();
+        res.json(alumni);
+    });
+
+    app.post("/api/alumni", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl } = req.body;
+        db.prepare("INSERT INTO alumni (name, batch_year, contact_details, career_info, achievements, image_url, document_url) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+            name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl
+        );
+        res.json({ success: true });
+    });
+
+    app.put("/api/alumni/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl } = req.body;
+        db.prepare("UPDATE alumni SET name = ?, batch_year = ?, contact_details = ?, career_info = ?, achievements = ?, image_url = ?, document_url = ? WHERE id = ?").run(
+            name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl, req.params.id
+        );
+        res.json({ success: true });
+    });
+
+    app.delete("/api/alumni/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        db.prepare("DELETE FROM alumni WHERE id = ?").run(req.params.id);
+        res.json({ success: true });
+    });
+
+    // Book ISBN Lookup (Proxy to Google Books API)
+    app.get("/api/books/isbn/:isbn", async (req, res) => {
+        const { isbn } = req.params;
+        try {
+            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+            const data = await response.json();
+            if (data.totalItems > 0) {
+                const book = data.items[0].volumeInfo;
+                res.json({
+                    title: book.title,
+                    author: book.authors ? book.authors.join(", ") : "Unknown",
+                    coverImage: book.imageLinks ? book.imageLinks.thumbnail : null,
+                    description: book.description || "No description available."
+                });
+            } else {
+                res.status(404).json({ message: "Book not found" });
+            }
+        } catch (e) {
+            res.status(500).json({ message: "Error fetching book details" });
+        }
+    });
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
             server: { middlewareMode: true },

@@ -4,8 +4,9 @@ import {
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
     ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText,
-    MapPin, Phone
+    MapPin, Phone, Award, QrCode, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle
 } from 'lucide-react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -25,6 +26,9 @@ export default function Dashboard() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('Dashboard');
+    const [globalSearch, setGlobalSearch] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
 
     useEffect(() => {
         if (!token) {
@@ -53,6 +57,22 @@ export default function Dashboard() {
         .finally(() => setLoading(false));
     }, [token, navigate, user?.role]);
 
+    useEffect(() => {
+        if (globalSearch.length > 1) {
+            const delayDebounceFn = setTimeout(() => {
+                fetch(`/api/students/search?q=${globalSearch}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(res => res.json())
+                .then(setSearchResults)
+                .catch(() => setSearchResults([]));
+            }, 300);
+            return () => clearTimeout(delayDebounceFn);
+        } else {
+            setSearchResults([]);
+        }
+    }, [globalSearch, token]);
+
     if (loading) return <div className="flex items-center justify-center min-h-screen bg-[#F8F7FF]">Loading...</div>;
 
     const renderContent = () => {
@@ -72,6 +92,12 @@ export default function Dashboard() {
                 return user?.role === 'student' || user?.role === 'admin' ? <FeesView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Fees are restricted to Students and Admins.</div>;
             case 'Admin Panel':
                 return user?.role === 'admin' ? <AdminPanelView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
+            case 'Alumni':
+                return <AlumniView token={token!} user={user!} />;
+            case 'Book Scanner':
+                return <BookScannerView token={token!} />;
+            case 'Admin Profile':
+                return user?.role === 'admin' ? <AdminProfileView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
             case 'Library':
                 return <LibraryView token={token!} user={user!} />;
             case 'Attendance':
@@ -104,12 +130,17 @@ export default function Dashboard() {
                     <SidebarLink icon={<BookMarked />} label="Study Materials" active={activeTab === 'Study Materials'} onClick={() => setActiveTab('Study Materials')} />
                     <SidebarLink icon={<Calendar />} label="Events" active={activeTab === 'Events'} onClick={() => setActiveTab('Events')} />
                     <SidebarLink icon={<Search />} label="Lost & Found" active={activeTab === 'Lost & Found'} onClick={() => setActiveTab('Lost & Found')} />
+                    <SidebarLink icon={<Award />} label="Alumni" active={activeTab === 'Alumni'} onClick={() => setActiveTab('Alumni')} />
                     <SidebarLink icon={<BookOpen />} label="Library" active={activeTab === 'Library'} onClick={() => setActiveTab('Library')} />
+                    <SidebarLink icon={<QrCode />} label="Book Scanner" active={activeTab === 'Book Scanner'} onClick={() => setActiveTab('Book Scanner')} />
                     {(user?.role === 'student' || user?.role === 'admin') && (
                         <SidebarLink icon={<CreditCard />} label="Fees" active={activeTab === 'Fees'} onClick={() => setActiveTab('Fees')} />
                     )}
                     {user?.role === 'admin' && (
-                        <SidebarLink icon={<ShieldCheck />} label="Admin Panel" active={activeTab === 'Admin Panel'} onClick={() => setActiveTab('Admin Panel')} />
+                        <>
+                            <SidebarLink icon={<ShieldCheck />} label="Admin Panel" active={activeTab === 'Admin Panel'} onClick={() => setActiveTab('Admin Panel')} />
+                            <SidebarLink icon={<UserCircle />} label="Admin Profile" active={activeTab === 'Admin Profile'} onClick={() => setActiveTab('Admin Profile')} />
+                        </>
                     )}
                 </nav>
 
@@ -125,18 +156,77 @@ export default function Dashboard() {
 
             {/* Main Content */}
             <main className="flex-1 p-8 lg:p-12 overflow-y-auto">
-                <header className="flex justify-between items-center mb-10">
+                <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                     <div>
                         <h1 className="text-3xl font-bold text-[#1F2937]">Welcome, {user?.name}</h1>
                         <p className="text-[#6B7280] mt-1">Role: <span className="capitalize font-semibold text-[#7C3AED]">{user?.role}</span></p>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <button className="w-12 h-12 bg-white border border-gray-100 rounded-2xl flex items-center justify-center relative shadow-sm hover:bg-gray-50 transition-all">
-                            <Bell className="w-6 h-6 text-[#4B5563]" />
-                            <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-                        </button>
-                        <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center border border-purple-200">
-                            <User className="text-[#7C3AED] w-6 h-6" />
+                    
+                    <div className="flex flex-1 max-w-2xl w-full items-center gap-4">
+                        {(user?.role === 'admin' || user?.role === 'faculty') && (
+                            <div className="relative flex-1">
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                    <Search className="w-5 h-5" />
+                                </div>
+                                <input 
+                                    type="text"
+                                    placeholder="Search student by name or roll number..."
+                                    value={globalSearch}
+                                    onChange={(e) => {
+                                        setGlobalSearch(e.target.value);
+                                        setIsSearching(true);
+                                    }}
+                                    onFocus={() => setIsSearching(true)}
+                                    className="w-full pl-12 pr-4 py-4 bg-white border border-gray-100 rounded-[24px] shadow-sm outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm"
+                                />
+                                
+                                {isSearching && globalSearch.length > 1 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-3xl shadow-xl border border-gray-100 z-[100] overflow-hidden max-h-96 overflow-y-auto">
+                                        <div className="p-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Search Results</span>
+                                            <button onClick={() => setIsSearching(false)} className="text-xs font-bold text-purple-600">Close</button>
+                                        </div>
+                                        {searchResults.length > 0 ? (
+                                            <div className="divide-y divide-gray-50">
+                                                {searchResults.map((s, i) => (
+                                                    <div 
+                                                        key={i} 
+                                                        className="p-4 hover:bg-purple-50 cursor-pointer transition-colors group"
+                                                        onClick={() => {
+                                                            setGlobalSearch('');
+                                                            setIsSearching(false);
+                                                            // Optionally navigate to a student profile or show details
+                                                            alert(`Student: ${s.name}\nRoll: ${s.roll_number}\nDept: ${s.department}\nCGPA: ${s.cgpa}`);
+                                                        }}
+                                                    >
+                                                        <div className="flex justify-between items-center">
+                                                            <div>
+                                                                <p className="font-bold text-[#1F2937] group-hover:text-[#7C3AED]">{s.name}</p>
+                                                                <p className="text-xs text-gray-500">Roll: {s.roll_number} • {s.department}</p>
+                                                            </div>
+                                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#7C3AED]" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-8 text-center text-gray-400 italic text-sm">
+                                                No students found matching "{globalSearch}"
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-3">
+                            <button className="w-12 h-12 bg-white border border-gray-100 rounded-2xl flex items-center justify-center relative shadow-sm hover:bg-gray-50 transition-all">
+                                <Bell className="w-6 h-6 text-[#4B5563]" />
+                                <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                            </button>
+                            <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center border border-purple-200">
+                                <User className="text-[#7C3AED] w-6 h-6" />
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -550,81 +640,166 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
     );
 }
 
-function EventsView({ token, user }: { token: string, user: any }) {
+function EventsView({ user, token }: { user: any, token: string }) {
     const [events, setEvents] = useState<any[]>([]);
+    const [viewMode, setViewMode] = useState<'dashboard' | 'category' | 'details'>('dashboard');
+    const [selectedCategory, setSelectedCategory] = useState<string>('');
+    const [selectedEvent, setSelectedEvent] = useState<any>(null);
+    const [eventResources, setEventResources] = useState<any[]>([]);
+    const [leaderboard, setLeaderboard] = useState<any[]>([]);
+    
     const [isAddOpen, setIsAddOpen] = useState(false);
-    const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
     const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-    const [registrationStatus, setRegistrationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [registrationError, setRegistrationError] = useState('');
+    const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
     const [isRegistrationsModalOpen, setIsRegistrationsModalOpen] = useState(false);
     const [registrations, setRegistrations] = useState<any[]>([]);
-    const [selectedEvent, setSelectedEvent] = useState<any>(null);
-    const [registering, setRegistering] = useState(false);
     const [loadingRegistrations, setLoadingRegistrations] = useState(false);
+    const [registrationStatus, setRegistrationStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [registrationError, setRegistrationError] = useState('');
+
+    const [isAddResourceOpen, setIsAddResourceOpen] = useState(false);
+    const [isAddLeaderboardOpen, setIsAddLeaderboardOpen] = useState(false);
 
     useEffect(() => {
-        fetch('/api/events', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(async res => (res.ok ? await safeJson(res) : []) || [])
-            .then(setEvents);
-    }, [token]);
+        fetchEvents();
+    }, []);
 
-    const handleAddEvent = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = Object.fromEntries(formData.entries());
-        const res = await fetch('/api/events', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-            setIsAddOpen(false);
-            fetch('/api/events', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(async res => (res.ok ? await safeJson(res) : []) || [])
-                .then(setEvents);
+    const fetchEvents = async () => {
+        try {
+            const res = await fetch("/api/events", {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setEvents(data || []);
+            }
+        } catch (err) {
+            console.error("Error fetching events:", err);
         }
     };
 
-    const handleMarkAttendance = async (e: React.FormEvent) => {
+    const fetchEventDetails = async (eventId: number) => {
+        try {
+            // Resources
+            const resRes = await fetch(`/api/events/${eventId}/resources`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resRes.ok) {
+                const resData = await resRes.json();
+                setEventResources(resData || []);
+            }
+
+            // Leaderboard
+            const leadRes = await fetch(`/api/events/${eventId}/leaderboard`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (leadRes.ok) {
+                const leadData = await leadRes.json();
+                setLeaderboard(leadData || []);
+            }
+        } catch (err) {
+            console.error("Error fetching event details:", err);
+        }
+    };
+
+    const handleAddEvent = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = {
-            eventId: selectedEvent.id,
-            rollNumbers: formData.get('rollNumbers')
-        };
-        const res = await fetch('/api/events/attendance', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
+        const formData = new FormData(e.currentTarget);
+        const data = Object.fromEntries(formData.entries());
+        
+        const res = await fetch("/api/events", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
         });
         if (res.ok) {
-            setIsAttendanceOpen(false);
-            alert('Attendance alert sent to faculty!');
+            setIsAddOpen(false);
+            fetchEvents();
         }
     };
 
     const handleRegister = async () => {
         if (!selectedEvent) return;
         setRegistrationStatus('loading');
-        setRegistrationError('');
         try {
-            const res = await fetch('/api/events/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            const res = await fetch("/api/events/register", {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ eventId: selectedEvent.id })
             });
-            const data = await safeJson(res);
             if (res.ok) {
                 setRegistrationStatus('success');
-                // Refresh events to show updated status if needed (though currently we don't show "registered" on the card)
             } else {
+                const data = await res.json();
                 setRegistrationStatus('error');
-                setRegistrationError(data?.message || 'Registration failed');
+                setRegistrationError(data.message || 'Registration failed');
             }
         } catch (err) {
             setRegistrationStatus('error');
-            setRegistrationError('Something went wrong. Please try again.');
+            setRegistrationError('Network error occurred');
+        }
+    };
+
+    const handleMarkAttendance = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        const rollNumbers = formData.get("rollNumbers");
+        
+        const res = await fetch("/api/events/attendance", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ eventId: selectedEvent.id, rollNumbers })
+        });
+        if (res.ok) {
+            setIsAttendanceOpen(false);
+            alert("Attendance alert sent to faculty!");
+        }
+    };
+
+    const handleAddResource = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        const data = Object.fromEntries(formData.entries());
+        
+        const res = await fetch(`/api/events/${selectedEvent.id}/resources`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+        if (res.ok) {
+            setIsAddResourceOpen(false);
+            fetchEventDetails(selectedEvent.id);
+        }
+    };
+
+    const handleAddLeaderboard = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        const data = Object.fromEntries(formData.entries());
+        
+        const res = await fetch(`/api/events/${selectedEvent.id}/leaderboard`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+        if (res.ok) {
+            setIsAddLeaderboardOpen(false);
+            fetchEventDetails(selectedEvent.id);
         }
     };
 
@@ -634,7 +809,7 @@ function EventsView({ token, user }: { token: string, user: any }) {
             const res = await fetch(`/api/events/${eventId}/registrations`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            const data = await safeJson(res);
+            const data = await res.json();
             if (res.ok) {
                 setRegistrations(data || []);
                 setIsRegistrationsModalOpen(true);
@@ -646,81 +821,354 @@ function EventsView({ token, user }: { token: string, user: any }) {
         }
     };
 
+    const categories = [
+        { id: 'technical', title: 'Technical Events', icon: <Target className="w-8 h-8" />, color: 'bg-blue-50 text-blue-600', examples: 'Hackathons, Coding, AI Workshops' },
+        { id: 'cultural', title: 'Cultural Events', icon: <Music className="w-8 h-8" />, color: 'bg-purple-50 text-purple-600', examples: 'Dance, Singing, Drama, Fashion' },
+        { id: 'sports', title: 'Sports Events', icon: <Trophy className="w-8 h-8" />, color: 'bg-orange-50 text-orange-600', examples: 'Cricket, Football, Badminton' },
+        { id: 'college_fest', title: 'College Fest', icon: <Star className="w-8 h-8" />, color: 'bg-pink-50 text-pink-600', examples: 'Annual Day, Tech Fest' }
+    ];
+
+    const filteredEvents = events.filter(e => e.category === selectedCategory);
+
     return (
         <div className="space-y-8">
-            {(user.role === 'admin' || user.role === 'faculty') && (
-                <div className="flex justify-end">
+            {/* Header with Navigation */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    {viewMode !== 'dashboard' && (
+                        <button 
+                            onClick={() => {
+                                if (viewMode === 'details') setViewMode('category');
+                                else setViewMode('dashboard');
+                            }}
+                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        >
+                            <ArrowLeft className="w-6 h-6 text-gray-500" />
+                        </button>
+                    )}
+                    <h2 className="text-2xl font-bold text-[#1F2937]">
+                        {viewMode === 'dashboard' ? 'Events & Activities' : 
+                         viewMode === 'category' ? categories.find(c => c.id === selectedCategory)?.title : 
+                         selectedEvent?.title}
+                    </h2>
+                </div>
+                {(user.role === 'admin' || user.role === 'faculty') && (
                     <motion.button 
-                        whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
+                        whileHover={{ scale: 1.05 }}
                         onClick={() => setIsAddOpen(true)} 
-                        className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold"
+                        className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold flex items-center gap-2"
                     >
+                        <Plus className="w-5 h-5" />
                         Add Event
                     </motion.button>
+                )}
+            </div>
+
+            {/* Dashboard View */}
+            {viewMode === 'dashboard' && (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {categories.map((cat) => (
+                        <motion.button
+                            key={cat.id}
+                            whileHover={{ y: -5 }}
+                            onClick={() => { setSelectedCategory(cat.id); setViewMode('category'); }}
+                            className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 text-left group"
+                        >
+                            <div className={`w-16 h-16 ${cat.color} rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+                                {cat.icon}
+                            </div>
+                            <h3 className="text-xl font-bold text-[#1F2937] mb-2">{cat.title}</h3>
+                            <p className="text-sm text-[#6B7280] leading-relaxed">{cat.examples}</p>
+                        </motion.button>
+                    ))}
                 </div>
             )}
-            <div className="grid md:grid-cols-2 gap-8">
-                {events.map((e, i) => (
-                    <div key={i} className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 flex gap-6">
-                        <div className="w-24 h-24 bg-purple-50 rounded-3xl flex flex-col items-center justify-center flex-shrink-0">
-                            <span className="text-2xl font-bold text-[#7C3AED]">{new Date(e.date).getDate()}</span>
-                            <span className="text-xs font-bold text-[#7C3AED] uppercase">{new Date(e.date).toLocaleString('default', { month: 'short' })}</span>
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-xl font-bold text-[#1F2937] mb-2">{e.title}</h3>
-                            <p className="text-sm text-[#6B7280] mb-4 line-clamp-2">{e.description}</p>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <span className="text-xs font-bold px-3 py-1 bg-purple-100 text-[#7C3AED] rounded-full uppercase">{e.category}</span>
+
+            {/* Category View */}
+            {viewMode === 'category' && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {filteredEvents.map((e, i) => (
+                        <motion.div 
+                            key={i}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden flex flex-col"
+                        >
+                            <div className="h-48 bg-gray-100 relative">
+                                <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-[10px] font-bold uppercase tracking-widest text-[#7C3AED]">
+                                    {e.category}
+                                </div>
+                                <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                    <Calendar className="w-12 h-12" />
+                                </div>
+                            </div>
+                            <div className="p-8 flex-1 flex flex-col">
+                                <div className="flex items-start justify-between mb-4">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-[#1F2937] mb-1">{e.title}</h3>
+                                        <div className="flex items-center gap-2 text-[#6B7280] text-sm">
+                                            <MapPin className="w-4 h-4" />
+                                            <span>{e.venue}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-lg font-bold text-[#7C3AED]">{new Date(e.date).getDate()}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase">{new Date(e.date).toLocaleString('default', { month: 'short' })}</p>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-[#6B7280] mb-6 line-clamp-2 flex-1">{e.description}</p>
+                                <div className="flex items-center gap-3">
+                                    <button 
+                                        onClick={() => { setSelectedEvent(e); setViewMode('details'); fetchEventDetails(e.id); }}
+                                        className="flex-1 py-3 bg-gray-50 text-[#1F2937] rounded-2xl font-bold hover:bg-gray-100 transition-colors"
+                                    >
+                                        View Details
+                                    </button>
                                     <button 
                                         onClick={() => { setSelectedEvent(e); setIsRegisterOpen(true); }}
-                                        className="text-sm font-bold text-[#7C3AED] hover:underline"
+                                        className="flex-1 py-3 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100"
                                     >
-                                        Register Now
+                                        Register
                                     </button>
-                                    {user.role === 'admin' && e.category === 'hackathon' && (
-                                        <button 
-                                            onClick={() => { setSelectedEvent(e); fetchRegistrations(e.id); }}
-                                            className="text-sm font-bold text-blue-600 hover:underline"
-                                        >
-                                            View Registrations
-                                        </button>
-                                    )}
                                 </div>
-                                {user.role === 'admin' && (
+                            </div>
+                        </motion.div>
+                    ))}
+                    {filteredEvents.length === 0 && (
+                        <div className="col-span-full py-20 text-center">
+                            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Calendar className="w-10 h-10 text-gray-300" />
+                            </div>
+                            <p className="text-gray-400 font-medium">No events found in this category.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Details View */}
+            {viewMode === 'details' && selectedEvent && (
+                <div className="grid lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 space-y-8">
+                        {/* Main Info */}
+                        <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
+                            <div className="h-64 bg-gray-50 rounded-3xl mb-8 flex items-center justify-center text-gray-200">
+                                <Calendar className="w-20 h-20" />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 mb-6">
+                                <span className="px-4 py-1.5 bg-purple-50 text-[#7C3AED] rounded-full text-xs font-bold uppercase tracking-widest">
+                                    {selectedEvent.category}
+                                </span>
+                                <div className="flex items-center gap-2 text-gray-400 text-sm font-medium">
+                                    <Clock className="w-4 h-4" />
+                                    <span>{new Date(selectedEvent.date).toLocaleString()}</span>
+                                </div>
+                            </div>
+                            <h1 className="text-3xl font-bold text-[#1F2937] mb-4">{selectedEvent.title}</h1>
+                            <p className="text-[#6B7280] leading-relaxed mb-8">{selectedEvent.description}</p>
+                            
+                            <div className="grid sm:grid-cols-2 gap-6">
+                                <div className="p-6 bg-gray-50 rounded-3xl">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Venue</p>
+                                    <div className="flex items-center gap-3">
+                                        <MapPin className="w-5 h-5 text-[#7C3AED]" />
+                                        <p className="font-bold text-[#1F2937]">{selectedEvent.venue}</p>
+                                    </div>
+                                </div>
+                                <div className="p-6 bg-gray-50 rounded-3xl">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Organizer</p>
+                                    <div className="flex items-center gap-3">
+                                        <User className="w-5 h-5 text-[#7C3AED]" />
+                                        <p className="font-bold text-[#1F2937]">{selectedEvent.organizer || 'N/A'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Resources */}
+                        <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-xl font-bold text-[#1F2937]">Event Resources</h3>
+                                {(user.role === 'admin' || user.role === 'faculty') && (
                                     <button 
-                                        onClick={() => { setSelectedEvent(e); setIsAttendanceOpen(true); }}
-                                        className="text-xs font-bold text-orange-500 hover:underline"
+                                        onClick={() => setIsAddResourceOpen(true)}
+                                        className="text-[#7C3AED] font-bold text-sm hover:underline"
                                     >
-                                        Mark Attendance
+                                        Add Resource
                                     </button>
+                                )}
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                                {eventResources.map((res, i) => (
+                                    <a 
+                                        key={i}
+                                        href={res.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-4 bg-gray-50 rounded-2xl flex items-center gap-4 hover:bg-gray-100 transition-colors group"
+                                    >
+                                        <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                            {res.file_type === 'pdf' ? <FileText className="w-6 h-6 text-red-500" /> : <Image className="w-6 h-6 text-blue-500" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-sm text-[#1F2937] truncate">{res.title || 'Untitled Resource'}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase">{res.file_type}</p>
+                                        </div>
+                                        <Download className="w-4 h-4 text-gray-300 group-hover:text-[#7C3AED]" />
+                                    </a>
+                                ))}
+                                {eventResources.length === 0 && (
+                                    <p className="col-span-full text-center py-8 text-gray-400 italic text-sm">No resources available for this event.</p>
                                 )}
                             </div>
                         </div>
                     </div>
-                ))}
-            </div>
+
+                    <div className="space-y-8">
+                        {/* Registration Card */}
+                        <div className="bg-[#7C3AED] p-10 rounded-[40px] shadow-xl shadow-purple-100 text-white">
+                            <h3 className="text-xl font-bold mb-4">Join this Event</h3>
+                            <p className="text-purple-100 text-sm mb-8 leading-relaxed">
+                                Be part of this amazing experience. Register now to secure your spot!
+                            </p>
+                            <button 
+                                onClick={() => setIsRegisterOpen(true)}
+                                className="w-full py-4 bg-white text-[#7C3AED] rounded-2xl font-bold shadow-lg hover:bg-purple-50 transition-colors mb-4"
+                            >
+                                Register Now
+                            </button>
+                            <p className="text-center text-[10px] font-bold uppercase tracking-widest text-purple-200">
+                                Registration closes soon
+                            </p>
+                        </div>
+
+                        {/* Leaderboard */}
+                        <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-xl font-bold text-[#1F2937]">Leaderboard</h3>
+                                {(user.role === 'admin' || user.role === 'faculty') && (
+                                    <button 
+                                        onClick={() => setIsAddLeaderboardOpen(true)}
+                                        className="text-[#7C3AED] font-bold text-sm hover:underline"
+                                    >
+                                        Add Winner
+                                    </button>
+                                )}
+                            </div>
+                            <div className="space-y-4">
+                                {leaderboard.map((item, i) => (
+                                    <div key={i} className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg
+                                            ${item.position === 1 ? 'bg-yellow-100 text-yellow-600' : 
+                                              item.position === 2 ? 'bg-gray-100 text-gray-600' : 
+                                              'bg-orange-100 text-orange-600'}`}
+                                        >
+                                            {item.position}
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-[#1F2937]">{item.student_name}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase">{item.department}</p>
+                                        </div>
+                                        {item.position === 1 && <Trophy className="w-5 h-5 text-yellow-500" />}
+                                    </div>
+                                ))}
+                                {leaderboard.length === 0 && (
+                                    <div className="text-center py-10">
+                                        <Award className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+                                        <p className="text-gray-400 text-sm italic">Winners will be announced after completion.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Admin Actions */}
+                        {(user.role === 'admin' || user.role === 'faculty') && (
+                            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 space-y-3">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Admin Controls</p>
+                                <button 
+                                    onClick={() => fetchRegistrations(selectedEvent.id)}
+                                    className="w-full py-3 bg-blue-50 text-blue-600 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                                >
+                                    <Users className="w-4 h-4" />
+                                    View Registrations
+                                </button>
+                                <button 
+                                    onClick={() => setIsAttendanceOpen(true)}
+                                    className="w-full py-3 bg-orange-50 text-orange-600 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle className="w-4 h-4" />
+                                    Mark Attendance
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modals */}
             {isAddOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
                         <h3 className="text-2xl font-bold mb-6">Add Event</h3>
                         <form className="space-y-4" onSubmit={handleAddEvent}>
-                            <input name="title" placeholder="Title" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <textarea name="description" placeholder="Description" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="date" type="datetime-local" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="venue" placeholder="Venue" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <select name="category" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                <option value="club">Club</option>
-                                <option value="hackathon">Hackathon</option>
-                                <option value="cultural">Cultural</option>
-                                <option value="workshop">Workshop</option>
-                            </select>
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Add Event</button>
-                            <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                            <input name="title" placeholder="Event Title" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <textarea name="description" placeholder="Short Description" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <input name="date" type="datetime-local" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                                <select name="category" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                    <option value="technical">Technical</option>
+                                    <option value="cultural">Cultural</option>
+                                    <option value="sports">Sports</option>
+                                    <option value="college_fest">College Fest</option>
+                                </select>
+                            </div>
+                            <input name="venue" placeholder="Venue / Location" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="organizer" placeholder="Organizer Name" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="department" placeholder="Department" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Create Event</button>
+                            <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500 font-bold">Cancel</button>
                         </form>
                     </div>
                 </div>
             )}
+
+            {isAddResourceOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-6">Add Event Resource</h3>
+                        <form className="space-y-4" onSubmit={handleAddResource}>
+                            <input name="title" placeholder="Resource Title (e.g. Schedule, Rules)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <select name="fileType" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="pdf">PDF Document</option>
+                                <option value="image">Image / Poster</option>
+                            </select>
+                            <input name="fileUrl" placeholder="File URL" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Add Resource</button>
+                            <button type="button" onClick={() => setIsAddResourceOpen(false)} className="w-full py-2 text-gray-500 font-bold">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {isAddLeaderboardOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-6">Add Winner</h3>
+                        <form className="space-y-4" onSubmit={handleAddLeaderboard}>
+                            <input name="studentName" placeholder="Student Name" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <select name="position" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                <option value="1">1st Place</option>
+                                <option value="2">2nd Place</option>
+                                <option value="3">3rd Place</option>
+                            </select>
+                            <input name="department" placeholder="Department" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Announce Winner</button>
+                            <button type="button" onClick={() => setIsAddLeaderboardOpen(false)} className="w-full py-2 text-gray-500 font-bold">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {isAttendanceOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
@@ -1246,6 +1694,7 @@ function LibraryView({ token, user }: { token: string, user: any }) {
 function FeesView({ token }: { token: string }) {
     const [fees, setFees] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
     const { user } = useAuth();
 
     useEffect(() => {
@@ -1265,14 +1714,34 @@ function FeesView({ token }: { token: string }) {
         setFees(fees.map(f => f.id === feeId ? { ...f, status } : f));
     };
 
+    const filteredFees = fees.filter(f => 
+        !searchTerm || 
+        f.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        f.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     if (loading) return <div className="p-8 text-center">Loading fees...</div>;
 
     return (
         <div className="space-y-8">
             <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
-                <h2 className="text-2xl font-bold text-[#1F2937] mb-8">
-                    {user?.role === 'admin' ? 'All Student Fees' : 'My Fee Structure - 2026'}
-                </h2>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                    <h2 className="text-2xl font-bold text-[#1F2937]">
+                        {user?.role === 'admin' ? 'All Student Fees' : 'My Fee Structure - 2026'}
+                    </h2>
+                    {user?.role === 'admin' && (
+                        <div className="relative w-full md:w-72">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input 
+                                type="text"
+                                placeholder="Search student by name or ID..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-100 transition-all"
+                            />
+                        </div>
+                    )}
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
@@ -1285,7 +1754,7 @@ function FeesView({ token }: { token: string }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {fees.map((f, i) => (
+                            {filteredFees.map((f, i) => (
                                 <tr key={i}>
                                     {user?.role === 'admin' && (
                                         <td className="px-8 py-5">
@@ -1466,6 +1935,7 @@ function LibrarianDashboard({ token }: { token: string }) {
 
 function AdminPanelView({ token }: { token: string }) {
     const [students, setStudents] = useState<any[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState<any>(null);
@@ -1516,12 +1986,31 @@ function AdminPanelView({ token }: { token: string }) {
         }
     };
 
+    const filteredStudents = students.filter(s => 
+        !searchTerm || 
+        s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div className="space-y-8">
             <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
-                <div className="p-8 border-b border-gray-50 flex justify-between items-center">
-                    <h2 className="text-xl font-bold text-[#1F2937]">Student Directory ({students.length})</h2>
-                    <div className="flex gap-4">
+                <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-xl font-bold text-[#1F2937]">Student Directory ({students.length})</h2>
+                        <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Manage all registered students</p>
+                    </div>
+                    <div className="flex flex-wrap gap-4 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-64">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input 
+                                type="text"
+                                placeholder="Search by name or ID..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-100 transition-all"
+                            />
+                        </div>
                         <motion.button 
                             whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
                             onClick={() => setIsNotifOpen(true)} 
@@ -1550,7 +2039,7 @@ function AdminPanelView({ token }: { token: string }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {students.map((s, i) => (
+                            {filteredStudents.map((s, i) => (
                                 <tr key={i} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-8 py-5">
                                         <p className="font-bold text-[#1F2937]">{s.name}</p>
@@ -1713,6 +2202,8 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
     const [subjects, setSubjects] = useState<any[]>([]);
     const [stats, setStats] = useState<any[]>([]);
     const [isMarking, setIsMarking] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [modalSearch, setModalSearch] = useState('');
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
@@ -1777,16 +2268,43 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
         );
     }
 
+    const filteredStudents = students.filter(s => 
+        !searchTerm || 
+        s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const modalFilteredStudents = students.filter(s => 
+        !modalSearch || 
+        s.name?.toLowerCase().includes(modalSearch.toLowerCase()) ||
+        s.roll_number?.toLowerCase().includes(modalSearch.toLowerCase())
+    );
+
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Management</h2>
-                <button 
-                    onClick={() => setIsMarking(true)}
-                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold"
-                >
-                    Mark Attendance
-                </button>
+                <div className="flex flex-wrap gap-4 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                            type="text"
+                            placeholder="Search student..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-100 transition-all shadow-sm"
+                        />
+                    </div>
+                    <button 
+                        onClick={() => {
+                            setIsMarking(true);
+                            setModalSearch('');
+                        }}
+                        className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold whitespace-nowrap"
+                    >
+                        Mark Attendance
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
@@ -1799,7 +2317,7 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {students.map((s, i) => (
+                        {filteredStudents.map((s, i) => (
                             <tr key={i} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
                                 <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
@@ -1815,10 +2333,23 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
                         <h3 className="text-2xl font-bold mb-6">Mark Attendance</h3>
                         <form className="space-y-4" onSubmit={handleMarkAttendance}>
-                            <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                <option value="">Select Student</option>
-                                {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
-                            </select>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Type to filter students..."
+                                        value={modalSearch}
+                                        onChange={(e) => setModalSearch(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
+                                    />
+                                </div>
+                                <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                    <option value="">Select Student ({modalFilteredStudents.length} found)</option>
+                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                                </select>
+                            </div>
                             <select name="subjectId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
                                 <option value="">Select Subject</option>
                                 {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1843,6 +2374,8 @@ function ResultsView({ token, user }: { token: string, user: any }) {
     const [subjects, setSubjects] = useState<any[]>([]);
     const [studentResults, setStudentResults] = useState<any>(null);
     const [isAdding, setIsAdding] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [modalSearch, setModalSearch] = useState('');
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
@@ -1860,10 +2393,26 @@ function ResultsView({ token, user }: { token: string, user: any }) {
         }
     }, [token, user.role, user.id]);
 
+    const [marks, setMarks] = useState<number>(0);
+    const [grade, setGrade] = useState<string>('');
+
+    useEffect(() => {
+        if (marks >= 90) setGrade('O');
+        else if (marks >= 80) setGrade('A+');
+        else if (marks >= 70) setGrade('A');
+        else if (marks >= 60) setGrade('B');
+        else if (marks >= 50) setGrade('C');
+        else if (marks >= 30) setGrade('D');
+        else setGrade('F');
+    }, [marks]);
+
     const handleAddResult = async (e: React.FormEvent) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = Object.fromEntries(formData.entries());
+        const payload = {
+            ...Object.fromEntries(formData.entries()),
+            grade
+        };
         
         const res = await fetch('/api/results', {
             method: 'POST',
@@ -1873,8 +2422,21 @@ function ResultsView({ token, user }: { token: string, user: any }) {
         if (res.ok) {
             alert('Result added successfully');
             setIsAdding(false);
+            window.location.reload();
         }
     };
+
+    const filteredStudents = students.filter(s => 
+        !searchTerm || 
+        s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const modalFilteredStudents = students.filter(s => 
+        !modalSearch || 
+        s.name?.toLowerCase().includes(modalSearch.toLowerCase()) ||
+        s.roll_number?.toLowerCase().includes(modalSearch.toLowerCase())
+    );
 
     if (user.role === 'student') {
         return (
@@ -1927,14 +2489,29 @@ function ResultsView({ token, user }: { token: string, user: any }) {
 
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-2xl font-bold text-[#1F2937]">Result Management</h2>
-                <button 
-                    onClick={() => setIsAdding(true)}
-                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold"
-                >
-                    Add Result
-                </button>
+                <div className="flex flex-wrap gap-4 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                            type="text"
+                            placeholder="Search student..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-100 transition-all shadow-sm"
+                        />
+                    </div>
+                    <button 
+                        onClick={() => {
+                            setIsAdding(true);
+                            setModalSearch('');
+                        }}
+                        className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold whitespace-nowrap"
+                    >
+                        Add Result
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
@@ -1947,7 +2524,7 @@ function ResultsView({ token, user }: { token: string, user: any }) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {students.map((s, i) => (
+                        {filteredStudents.map((s, i) => (
                             <tr key={i} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
                                 <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
@@ -1963,17 +2540,40 @@ function ResultsView({ token, user }: { token: string, user: any }) {
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
                         <h3 className="text-2xl font-bold mb-6">Add Result</h3>
                         <form className="space-y-4" onSubmit={handleAddResult}>
-                            <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                <option value="">Select Student</option>
-                                {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
-                            </select>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Type to filter students..."
+                                        value={modalSearch}
+                                        onChange={(e) => setModalSearch(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
+                                    />
+                                </div>
+                                <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                    <option value="">Select Student ({modalFilteredStudents.length} found)</option>
+                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                                </select>
+                            </div>
                             <input name="semester" type="number" placeholder="Semester" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <select name="subjectId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
                                 <option value="">Select Subject</option>
                                 {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
-                            <input name="marks" type="number" placeholder="Marks" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="grade" placeholder="Grade (A, B+, etc.)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input 
+                                name="marks" 
+                                type="number" 
+                                placeholder="Marks" 
+                                required 
+                                className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none"
+                                onChange={(e) => setMarks(parseInt(e.target.value) || 0)}
+                            />
+                            <div className="flex items-center gap-4 px-4 py-3 bg-purple-50 rounded-xl">
+                                <span className="text-xs font-bold text-purple-400 uppercase">Calculated Grade:</span>
+                                <span className="text-xl font-bold text-[#7C3AED]">{grade}</span>
+                            </div>
                             <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Result</button>
                             <button type="button" onClick={() => setIsAdding(false)} className="w-full py-2 text-gray-500">Cancel</button>
                         </form>
@@ -2186,6 +2786,226 @@ function ProfileView({ token, user }: { token: string, user: any }) {
     );
 }
 
+function AdminProfileView({ token }: { token: string }) {
+    const [profile, setProfile] = useState<any>(null);
+    const [isEditing, setIsEditing] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/admin/profile', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(async res => (res.ok ? await safeJson(res) : null))
+            .then(setProfile);
+    }, [token]);
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        
+        const res = await fetch('/api/admin/profile/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            setProfile({ ...profile, ...payload });
+            setIsEditing(false);
+            alert('Profile updated successfully');
+        }
+    };
+
+    if (!profile) return <div className="p-8 text-center">Loading Admin Profile...</div>;
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-8">
+            <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32" />
+                <div className="relative flex flex-col md:flex-row items-center gap-8">
+                    <div className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-purple-200">
+                        {profile.name[0]}
+                    </div>
+                    <div className="text-center md:text-left flex-1">
+                        <div className="flex flex-wrap items-center gap-3 mb-2 justify-center md:justify-start">
+                            <h2 className="text-3xl font-bold text-[#1F2937]">{profile.name}</h2>
+                            <span className="px-3 py-1 bg-purple-100 text-[#7C3AED] text-xs font-bold rounded-full uppercase tracking-wider">
+                                {profile.role}
+                            </span>
+                        </div>
+                        <p className="text-[#6B7280] font-medium">{profile.email}</p>
+                        <div className="mt-6 flex gap-4 justify-center md:justify-start">
+                            <button 
+                                onClick={() => setIsEditing(true)}
+                                className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl text-sm font-bold hover:bg-[#6D28D9] transition-all shadow-lg shadow-purple-100"
+                            >
+                                Edit Profile
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                    <h3 className="text-lg font-bold mb-6 flex items-center gap-3 text-[#1F2937]">
+                        <Users className="text-[#7C3AED] w-5 h-5" />
+                        System Statistics
+                    </h3>
+                    <div className="p-6 bg-purple-50 rounded-3xl text-center">
+                        <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1">Total Registered Students</p>
+                        <p className="text-4xl font-black text-[#7C3AED]">{profile.totalStudents}</p>
+                    </div>
+                </div>
+            </div>
+
+            {isEditing && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <h3 className="text-2xl font-bold mb-8">Update Admin Info</h3>
+                        <form className="space-y-6" onSubmit={handleUpdate}>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Full Name</label>
+                                <input name="name" defaultValue={profile.name} required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Email Address</label>
+                                <input name="email" defaultValue={profile.email} required type="email" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            </div>
+                            <div className="flex gap-4 pt-4">
+                                <button type="submit" className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Save Changes</button>
+                                <button type="button" onClick={() => setIsEditing(false)} className="px-8 py-4 bg-gray-100 text-gray-500 rounded-2xl font-bold">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function AlumniView({ token, user }: { token: string, user: any }) {
+    const [alumni, setAlumni] = useState<any[]>([]);
+    const [search, setSearch] = useState('');
+    const [isAddOpen, setIsAddOpen] = useState(false);
+    const [editingAlumni, setEditingAlumni] = useState<any>(null);
+
+    useEffect(() => {
+        fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setAlumni);
+    }, [token]);
+
+    const filtered = alumni.filter(a => 
+        a.name.toLowerCase().includes(search.toLowerCase()) ||
+        a.batch_year.toString().includes(search)
+    );
+
+    const handleAddAlumni = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        
+        const res = await fetch('/api/alumni', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            setIsAddOpen(false);
+            window.location.reload();
+        }
+    };
+
+    const handleDelete = async (id: number) => {
+        if (!confirm('Are you sure you want to delete this record?')) return;
+        const res = await fetch(`/api/alumni/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            setAlumni(alumni.filter(a => a.id !== id));
+        }
+    };
+
+    return (
+        <div className="space-y-8">
+            <div className="flex flex-wrap gap-4 items-center justify-between">
+                <h2 className="text-2xl font-bold text-[#1F2937]">Alumni Network</h2>
+                <div className="flex gap-4 flex-1 max-w-md">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                            placeholder="Search by name or batch..."
+                            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-100 rounded-2xl outline-none"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </div>
+                    {user.role === 'admin' && (
+                        <motion.button 
+                            whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
+                            onClick={() => setIsAddOpen(true)} 
+                            className="px-6 py-3 bg-[#7C3AED] text-white rounded-2xl font-bold text-sm"
+                        >
+                            Add Alumni
+                        </motion.button>
+                    )}
+                </div>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+                {filtered.map((a, i) => (
+                    <div key={i} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-50 group">
+                        <div className="h-48 bg-gray-100 relative">
+                            <img src={a.image_url || `https://picsum.photos/seed/${a.id}/400/300`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
+                                <p className="text-white text-xs font-medium">{a.career_info}</p>
+                            </div>
+                            <span className="absolute top-4 right-4 px-3 py-1 bg-white/90 backdrop-blur-sm text-[#7C3AED] rounded-full text-[10px] font-bold uppercase">
+                                Batch {a.batch_year}
+                            </span>
+                        </div>
+                        <div className="p-6">
+                            <h3 className="font-bold text-[#1F2937] mb-1">{a.name}</h3>
+                            <p className="text-xs text-[#6B7280] mb-4">{a.contact_details}</p>
+                            
+                            <div className="space-y-3">
+                                <div className="p-3 bg-gray-50 rounded-xl">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Achievements</p>
+                                    <p className="text-xs text-[#1F2937] line-clamp-2">{a.achievements}</p>
+                                </div>
+                                {user.role === 'admin' && (
+                                    <div className="flex gap-4 pt-2">
+                                        <button onClick={() => setEditingAlumni(a)} className="text-xs font-bold text-[#7C3AED]">Edit</button>
+                                        <button onClick={() => handleDelete(a.id)} className="text-xs font-bold text-red-500">Delete</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {isAddOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative my-8">
+                        <h3 className="text-2xl font-bold mb-6">Add Alumni Record</h3>
+                        <form className="space-y-4" onSubmit={handleAddAlumni}>
+                            <input name="name" placeholder="Full Name" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="batchYear" placeholder="Batch Year (e.g. 2020)" type="number" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="contactDetails" placeholder="Contact (Email/Phone)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="careerInfo" placeholder="Current Career/Company" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <textarea name="achievements" placeholder="Achievements" className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
+                            <input name="imageUrl" placeholder="Image URL" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="documentUrl" placeholder="Document/Proof Link" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Add Alumni</button>
+                            <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function InfoField({ label, value }: { label: string, value: any }) {
     return (
         <div>
@@ -2206,6 +3026,118 @@ function EditField({ label, name, defaultValue, type = 'text', options = [] }: {
                 </select>
             ) : (
                 <input type={type} name={name} defaultValue={defaultValue} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+            )}
+        </div>
+    );
+}
+
+function BookScannerView({ token }: { token: string }) {
+    const [scanning, setScanning] = useState(false);
+    const [book, setBook] = useState<any>(null);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let scanner: Html5QrcodeScanner | null = null;
+        if (scanning) {
+            scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+            scanner.render(onScanSuccess, onScanError);
+        }
+        return () => {
+            if (scanner) scanner.clear().catch(console.error);
+        };
+    }, [scanning]);
+
+    const onScanSuccess = async (decodedText: string) => {
+        setScanning(false);
+        try {
+            const res = await fetch(`/api/books/isbn/${decodedText}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setBook(data);
+                setError('');
+            } else {
+                setError('Book not found for this ISBN/QR');
+            }
+        } catch (err) {
+            setError('Failed to fetch book details');
+        }
+    };
+
+    const onScanError = (err: any) => {
+        // console.warn(err);
+    };
+
+    return (
+        <div className="max-w-2xl mx-auto space-y-8">
+            <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 text-center">
+                <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <QrCode className="w-10 h-10 text-[#7C3AED]" />
+                </div>
+                <h2 className="text-2xl font-bold text-[#1F2937] mb-2">Book QR/ISBN Scanner</h2>
+                <p className="text-[#6B7280] mb-8">Scan the QR code or ISBN barcode on the book to get instant details.</p>
+                
+                {!scanning ? (
+                    <button 
+                        onClick={() => setScanning(true)}
+                        className="px-10 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100"
+                    >
+                        Start Scanning
+                    </button>
+                ) : (
+                    <div className="space-y-6">
+                        <div id="reader" className="overflow-hidden rounded-3xl border-4 border-purple-100"></div>
+                        <button 
+                            onClick={() => setScanning(false)}
+                            className="text-gray-500 font-bold"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {error && (
+                <div className="p-6 bg-red-50 rounded-3xl border border-red-100 flex items-center gap-4 text-red-600">
+                    <AlertCircle className="w-6 h-6" />
+                    <p className="font-bold">{error}</p>
+                </div>
+            )}
+
+            {book && (
+                <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 flex flex-col md:flex-row gap-8"
+                >
+                    <div className="w-full md:w-40 h-60 bg-gray-100 rounded-2xl overflow-hidden flex-shrink-0">
+                        <img src={book.thumbnail} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="flex-1 space-y-4">
+                        <div>
+                            <h3 className="text-xl font-bold text-[#1F2937] mb-1">{book.title}</h3>
+                            <p className="text-[#6B7280] font-medium">{book.authors?.join(', ')}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-gray-50 rounded-2xl">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Publisher</p>
+                                <p className="text-xs font-bold">{book.publisher || 'N/A'}</p>
+                            </div>
+                            <div className="p-4 bg-gray-50 rounded-2xl">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Pages</p>
+                                <p className="text-xs font-bold">{book.pageCount || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <p className="text-xs text-[#6B7280] leading-relaxed line-clamp-3">{book.description}</p>
+                        <button 
+                            onClick={() => setBook(null)}
+                            className="w-full py-3 bg-gray-50 text-gray-500 rounded-xl text-sm font-bold"
+                        >
+                            Clear Result
+                        </button>
+                    </div>
+                </motion.div>
             )}
         </div>
     );

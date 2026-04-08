@@ -93,9 +93,24 @@ CREATE TABLE IF NOT EXISTS events (
     description TEXT,
     date DATETIME NOT NULL,
     venue TEXT NOT NULL,
-    category TEXT CHECK(category IN ('club', 'hackathon', 'cultural', 'workshop')) NOT NULL,
+    category TEXT CHECK(category IN ('technical', 'cultural', 'sports', 'college_fest')) NOT NULL,
+    organizer TEXT,
+    department TEXT,
     created_by INTEGER NOT NULL,
     FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Alumni Management
+CREATE TABLE IF NOT EXISTS alumni (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    batch_year INTEGER NOT NULL,
+    contact_details TEXT,
+    career_info TEXT,
+    achievements TEXT,
+    image_url TEXT,
+    document_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Event Registrations
@@ -106,6 +121,26 @@ CREATE TABLE IF NOT EXISTS event_registrations (
     registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (event_id) REFERENCES events(id),
     FOREIGN KEY (student_id) REFERENCES students(id)
+);
+
+-- Event Resources
+CREATE TABLE IF NOT EXISTS event_resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    file_type TEXT CHECK(file_type IN ('image', 'pdf')) NOT NULL,
+    file_url TEXT NOT NULL,
+    title TEXT,
+    FOREIGN KEY (event_id) REFERENCES events(id)
+);
+
+-- Event Leaderboard
+CREATE TABLE IF NOT EXISTS event_leaderboard (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    student_name TEXT NOT NULL,
+    position INTEGER NOT NULL, -- 1, 2, 3
+    department TEXT,
+    FOREIGN KEY (event_id) REFERENCES events(id)
 );
 
 -- Lost & Found
@@ -153,7 +188,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     target_role TEXT, -- 'student', 'faculty', 'all'
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    user_id INTEGER, -- Specific user if needed
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- Results
