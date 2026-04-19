@@ -94,7 +94,7 @@ if (librarianExists.count === 0) {
         const insertUser = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)");
         const insertStudent = db.prepare("INSERT INTO students (user_id, roll_number, semester, cgpa, fee_status) VALUES (?, ?, ?, ?, ?)");
         
-        for (let i = 1; i <= 2; i++) {
+        for (let i = 1; i <= 200; i++) {
             const name = `Student ${i}`;
             const email = `student${i}@college.edu`;
             const dept = "Computer Science";
@@ -106,11 +106,12 @@ if (librarianExists.count === 0) {
             const cgpa = "0.00"; 
             const feeStatus = 'paid';
             
-            insertStudent.run(userId, roll, semester, cgpa, feeStatus);
+            const studentResult = insertStudent.run(userId, roll, semester, cgpa, feeStatus);
+            const studentId = studentResult.lastInsertRowid;
 
             // Seed Fees
             db.prepare("INSERT INTO fees (student_id, amount, due_date, status) VALUES (?, ?, ?, ?)").run(
-                userId, 45000, "2026-06-30", feeStatus
+                studentId, 45000, "2026-06-30", feeStatus
             );
         }
     }

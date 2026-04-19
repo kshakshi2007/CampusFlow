@@ -478,6 +478,7 @@ function AttendanceModal({ token }: { token: string }) {
                         </button>
                         <h3 className="text-2xl font-bold text-[#1F2937] mb-6">Mark Attendance</h3>
                         <form onSubmit={handleSubmit} className="space-y-6">
+<<<<<<< Updated upstream
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
                                 <div className="relative">
@@ -491,6 +492,13 @@ function AttendanceModal({ token }: { token: string }) {
                                     />
                                 </div>
                                 <select 
+=======
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Student ID (1-500)</label>
+                                <input 
+                                    type="number" 
+                                    required 
+>>>>>>> Stashed changes
                                     value={studentId}
                                     onChange={(e) => setStudentId(e.target.value)}
                                     required 
