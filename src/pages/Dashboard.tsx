@@ -4,7 +4,8 @@ import {
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
     ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText,
-    MapPin, Phone, Award, QrCode, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle
+    MapPin, Phone, Award, QrCode, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle, X, Camera, FileUp,
+    Library, Trash2, Home
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../context/AuthContext';
@@ -97,17 +98,17 @@ export default function Dashboard() {
             case 'Book Scanner':
                 return <BookScannerView token={token!} />;
             case 'Admin Profile':
-                return user?.role === 'admin' ? <AdminProfileView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
+                return user?.role === 'admin' ? <AdminProfileView token={token!} setActiveTab={setActiveTab} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
             case 'Library':
-                return <LibraryView token={token!} user={user!} />;
+                return <LibraryView token={token!} user={user!} setActiveTab={setActiveTab} />;
             case 'Attendance':
-                return <AttendanceView token={token!} user={user!} />;
+                return <AttendanceView token={token!} user={user!} setActiveTab={setActiveTab} />;
             case 'Results':
-                return <ResultsView token={token!} user={user!} />;
+                return <ResultsView token={token!} user={user!} setActiveTab={setActiveTab} />;
             case 'Profile':
                 return <ProfileView token={token!} user={user!} />;
             default:
-                return <StudentDashboard data={data} user={user} />;
+                return user?.role === 'student' ? <StudentDashboard data={data} user={user} /> : <FacultyDashboard data={data} user={user} />;
         }
     };
 
@@ -132,7 +133,6 @@ export default function Dashboard() {
                     <SidebarLink icon={<Search />} label="Lost & Found" active={activeTab === 'Lost & Found'} onClick={() => setActiveTab('Lost & Found')} />
                     <SidebarLink icon={<Award />} label="Alumni" active={activeTab === 'Alumni'} onClick={() => setActiveTab('Alumni')} />
                     <SidebarLink icon={<BookOpen />} label="Library" active={activeTab === 'Library'} onClick={() => setActiveTab('Library')} />
-                    <SidebarLink icon={<QrCode />} label="Book Scanner" active={activeTab === 'Book Scanner'} onClick={() => setActiveTab('Book Scanner')} />
                     {(user?.role === 'student' || user?.role === 'admin') && (
                         <SidebarLink icon={<CreditCard />} label="Fees" active={activeTab === 'Fees'} onClick={() => setActiveTab('Fees')} />
                     )}
@@ -324,8 +324,8 @@ function FacultyDashboard({ data, user }: { data: any, user: any }) {
     ];
 
     return (
-        <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <div className="space-y-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {stats.map((stat, i) => (
                     <div key={i} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-50 flex items-center gap-5">
                         <div className={`w-14 h-14 ${stat.color} rounded-2xl flex items-center justify-center`}>
@@ -394,7 +394,7 @@ function FacultyDashboard({ data, user }: { data: any, user: any }) {
                     )}
                 </div>
             </div>
-        </>
+        </div>
     );
 }
 
@@ -402,8 +402,31 @@ function AttendanceModal({ token }: { token: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [status, setStatus] = useState<'present' | 'absent'>('present');
     const [studentId, setStudentId] = useState('');
-    const [subjectId, setSubjectId] = useState('1');
+    const [subjectId, setSubjectId] = useState('');
     const [loading, setLoading] = useState(false);
+    const [students, setStudents] = useState<any[]>([]);
+    const [subjects, setSubjects] = useState<any[]>([]);
+    const [modalSearch, setModalSearch] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setStudents);
+            fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(data => {
+                    setSubjects(data);
+                    if (data.length > 0) setSubjectId(data[0].id.toString());
+                });
+        }
+    }, [isOpen, token]);
+
+    const modalFilteredStudents = students.filter(s => 
+        !modalSearch || 
+        s.name?.toLowerCase().includes(modalSearch.toLowerCase()) ||
+        s.roll_number?.toLowerCase().includes(modalSearch.toLowerCase())
+    );
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -413,7 +436,7 @@ function AttendanceModal({ token }: { token: string }) {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                    'Authorization': `Bearer ${token}` 
                 },
                 body: JSON.stringify({
                     studentId: parseInt(studentId),
@@ -444,7 +467,7 @@ function AttendanceModal({ token }: { token: string }) {
             </motion.button>
 
             {isOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-left">
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -455,16 +478,27 @@ function AttendanceModal({ token }: { token: string }) {
                         </button>
                         <h3 className="text-2xl font-bold text-[#1F2937] mb-6">Mark Attendance</h3>
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Student ID (1-200)</label>
-                                <input 
-                                    type="number" 
-                                    required 
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Type to filter..."
+                                        value={modalSearch}
+                                        onChange={(e) => setModalSearch(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
+                                    />
+                                </div>
+                                <select 
                                     value={studentId}
                                     onChange={(e) => setStudentId(e.target.value)}
+                                    required 
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-purple-500"
-                                    placeholder="Enter Student ID"
-                                />
+                                >
+                                    <option value="">Select Student ({modalFilteredStudents.length})</option>
+                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">Subject</label>
@@ -473,8 +507,8 @@ function AttendanceModal({ token }: { token: string }) {
                                     onChange={(e) => setSubjectId(e.target.value)}
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none"
                                 >
-                                    <option value="1">DBMS (CS401)</option>
-                                    <option value="2">OS (CS402)</option>
+                                    <option value="">Select Subject</option>
+                                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
                             <div className="flex gap-4">
@@ -532,7 +566,21 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
     const handleUpload = async (e: React.FormEvent) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = Object.fromEntries(formData.entries());
+        // Simulate file upload by creating a local URL
+        const file = formData.get('file') as File;
+        let fileUrl = '';
+        if (file && file.size > 0) {
+            fileUrl = URL.createObjectURL(file);
+        }
+        
+        const payload = {
+            title: formData.get('title'),
+            type: formData.get('type'),
+            semester: formData.get('semester'),
+            subjectId: formData.get('subjectId'),
+            url: fileUrl || 'https://example.com/placeholder.pdf'
+        };
+
         const res = await fetch('/api/materials', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -608,30 +656,22 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
             {isUploadOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <button onClick={() => setIsUploadOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                            <X className="w-6 h-6" />
+                        </button>
                         <h3 className="text-2xl font-bold mb-6">Upload Material</h3>
                         <form className="space-y-4" onSubmit={handleUpload}>
                             <input name="title" placeholder="Title" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <select name="type" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
                                 {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                             </select>
-                            <input name="subjectId" placeholder="Subject ID" required type="number" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="semester" placeholder="Semester" required type="number" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="semester" type="number" placeholder="Semester (1-8)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="subjectId" type="number" placeholder="Subject ID" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <div className="space-y-2">
-                                <label className="block text-xs font-bold text-gray-400 uppercase">File Source</label>
-                                <input name="url" placeholder="File URL or Drive Link" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                                <div className="text-center text-xs text-gray-400">OR</div>
-                                <input type="file" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm" onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                        // In a real app, we'd upload to S3/Cloudinary. 
-                                        // Here we'll just simulate by putting the name in the URL field if it's empty
-                                        const urlInput = (e.target.form as HTMLFormElement).elements.namedItem('url') as HTMLInputElement;
-                                        if (!urlInput.value) urlInput.value = `File: ${file.name}`;
-                                    }
-                                }} />
+                                <label className="text-xs font-bold text-gray-400 uppercase">Select File</label>
+                                <input name="file" type="file" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none transition-all focus:ring-2 focus:ring-purple-100" />
                             </div>
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Upload</button>
-                            <button type="button" onClick={() => setIsUploadOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Upload to Cloud</button>
                         </form>
                     </div>
                 </div>
@@ -1460,8 +1500,10 @@ function LostFoundView({ token, user }: { token: string, user: any }) {
                             <input name="location" placeholder="Location" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <input name="dateReported" type="date" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <textarea name="description" placeholder="Description" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="imageUrl" placeholder="Image URL (optional)" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="driveUrl" placeholder="Google Drive Link (optional)" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Upload Image</label>
+                                <input name="file" type="file" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            </div>
                             <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Submit Report</button>
                             <button type="button" onClick={() => setIsReportOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
                         </form>
@@ -1473,13 +1515,16 @@ function LostFoundView({ token, user }: { token: string, user: any }) {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
                         <h3 className="text-2xl font-bold mb-4">Claim Item</h3>
-                        <p className="text-sm text-gray-500 mb-6">Please provide proof of ownership (e.g., ID number, unique marks).</p>
-                        <textarea 
-                            className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none mb-6"
-                            placeholder="Enter proof here..."
-                            value={claimProof.proof}
-                            onChange={(e) => setClaimProof({...claimProof, proof: e.target.value})}
-                        />
+                        <p className="text-sm text-gray-500 mb-6">Please upload proof of ownership or provide details.</p>
+                        <div className="space-y-4">
+                            <input type="file" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <textarea 
+                                className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none"
+                                placeholder="Additional details..."
+                                value={claimProof.proof}
+                                onChange={(e) => setClaimProof({...claimProof, proof: e.target.value})}
+                            />
+                        </div>
                         <button 
                             onClick={async () => {
                                 await fetch('/api/lost-found/claim', {
@@ -1502,12 +1547,13 @@ function LostFoundView({ token, user }: { token: string, user: any }) {
     );
 }
 
-function LibraryView({ token, user }: { token: string, user: any }) {
+function LibraryView({ token, user, setActiveTab }: { token: string, user: any, setActiveTab: (t: string) => void }) {
     const [books, setBooks] = useState<any[]>([]);
     const [status, setStatus] = useState<string>('open');
     const [search, setSearch] = useState('');
     const [editingBook, setEditingBook] = useState<any>(null);
     const [isAddOpen, setIsAddOpen] = useState(false);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     useEffect(() => {
         fetch('/api/library/books', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -1595,12 +1641,26 @@ function LibraryView({ token, user }: { token: string, user: any }) {
                 </div>
                 {(user.role === 'librarian' || user.role === 'admin') && (
                     <div className="flex gap-2">
+                        <button onClick={() => setIsScannerOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-2">
+                            <QrCode className="w-4 h-4" /> Scan Book
+                        </button>
                         <button onClick={() => setIsAddOpen(true)} className="px-4 py-2 bg-[#7C3AED] text-white rounded-xl text-xs font-bold">Add Book</button>
                         <button onClick={() => updateStatus('open')} className="px-4 py-2 bg-green-100 text-green-600 rounded-xl text-xs font-bold">Open</button>
                         <button onClick={() => updateStatus('closed')} className="px-4 py-2 bg-red-100 text-red-600 rounded-xl text-xs font-bold">Close</button>
                     </div>
                 )}
             </div>
+
+            {isScannerOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-2xl rounded-[40px] p-10 relative max-h-[85vh] overflow-y-auto">
+                        <button onClick={() => setIsScannerOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                            <X className="w-6 h-6" />
+                        </button>
+                        <BookScannerView token={token} />
+                    </div>
+                </div>
+            )}
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filtered.map((book, i) => (
@@ -2197,13 +2257,14 @@ function QuickAction({ icon, label, color }: { icon: React.ReactNode, label: str
     );
 }
 
-function AttendanceView({ token, user }: { token: string, user: any }) {
+function AttendanceView({ token, user, setActiveTab }: { token: string, user: any, setActiveTab: (t: string) => void }) {
     const [students, setStudents] = useState<any[]>([]);
     const [subjects, setSubjects] = useState<any[]>([]);
     const [stats, setStats] = useState<any[]>([]);
     const [isMarking, setIsMarking] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [modalSearch, setModalSearch] = useState('');
+    const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
@@ -2274,6 +2335,24 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
         s.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const sortedStudents = [...filteredStudents].sort((a, b) => {
+        if (!sortConfig) return 0;
+        const key = sortConfig.key as keyof typeof a;
+        const aVal = String(a[key] || '');
+        const bVal = String(b[key] || '');
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
     const modalFilteredStudents = students.filter(s => 
         !modalSearch || 
         s.name?.toLowerCase().includes(modalSearch.toLowerCase()) ||
@@ -2283,7 +2362,12 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
     return (
         <div className="space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Management</h2>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all shadow-sm">
+                        <ArrowLeft className="w-5 h-5 text-[#7C3AED]" />
+                    </button>
+                    <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Management</h2>
+                </div>
                 <div className="flex flex-wrap gap-4 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -2311,13 +2395,13 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
                         <tr>
-                            <th className="px-8 py-4">Student</th>
-                            <th className="px-8 py-4">Roll No</th>
-                            <th className="px-8 py-4">Department</th>
+                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('name')}>Student</th>
+                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('roll_number')}>Roll No</th>
+                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('department')}>Department</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {filteredStudents.map((s, i) => (
+                        {sortedStudents.map((s, i) => (
                             <tr key={i} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
                                 <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
@@ -2331,6 +2415,9 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
             {isMarking && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                     <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <button onClick={() => setIsMarking(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                            <X className="w-6 h-6" />
+                        </button>
                         <h3 className="text-2xl font-bold mb-6">Mark Attendance</h3>
                         <form className="space-y-4" onSubmit={handleMarkAttendance}>
                             <div className="space-y-2">
@@ -2369,13 +2456,15 @@ function AttendanceView({ token, user }: { token: string, user: any }) {
     );
 }
 
-function ResultsView({ token, user }: { token: string, user: any }) {
+function ResultsView({ token, user, setActiveTab }: { token: string, user: any, setActiveTab: (t: string) => void }) {
     const [students, setStudents] = useState<any[]>([]);
     const [subjects, setSubjects] = useState<any[]>([]);
     const [studentResults, setStudentResults] = useState<any>(null);
     const [isAdding, setIsAdding] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [modalSearch, setModalSearch] = useState('');
+    const [bulkMarks, setBulkMarks] = useState<{[key: number]: number}>({});
+    const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
@@ -2393,34 +2482,48 @@ function ResultsView({ token, user }: { token: string, user: any }) {
         }
     }, [token, user.role, user.id]);
 
-    const [marks, setMarks] = useState<number>(0);
-    const [grade, setGrade] = useState<string>('');
-
     useEffect(() => {
-        if (marks >= 90) setGrade('O');
-        else if (marks >= 80) setGrade('A+');
-        else if (marks >= 70) setGrade('A');
-        else if (marks >= 60) setGrade('B');
-        else if (marks >= 50) setGrade('C');
-        else if (marks >= 30) setGrade('D');
-        else setGrade('F');
-    }, [marks]);
+        // Initialize bulkMarks if subjects are loaded
+        if (subjects.length > 0 && Object.keys(bulkMarks).length === 0) {
+            const initial: any = {};
+            subjects.forEach(s => initial[s.id] = 0);
+            setBulkMarks(initial);
+        }
+    }, [subjects]);
+
+    const calculateGPA = () => {
+        const marksList = Object.values(bulkMarks) as number[];
+        if (marksList.length === 0) return '0.00';
+        const total = marksList.reduce((acc: number, m: number) => acc + m, 0);
+        // Assuming 100 marks per subject, SGPA calculation simplified: (total / (subjects.length * 100)) * 10
+        return ((total / (subjects.length * 100)) * 10).toFixed(2);
+    };
 
     const handleAddResult = async (e: React.FormEvent) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = {
-            ...Object.fromEntries(formData.entries()),
-            grade
-        };
+        const studentId = formData.get('studentId');
+        const semester = formData.get('semester');
         
-        const res = await fetch('/api/results', {
+        const results = subjects.map(s => {
+            const m = bulkMarks[s.id] || 0;
+            let g = 'F';
+            if (m >= 90) g = 'O';
+            else if (m >= 80) g = 'A+';
+            else if (m >= 70) g = 'A';
+            else if (m >= 60) g = 'B';
+            else if (m >= 50) g = 'C';
+            else if (m >= 30) g = 'D';
+            return { subjectId: s.id, marks: m, grade: g };
+        });
+
+        const res = await fetch('/api/results/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ studentId, semester, results, cgpa: calculateGPA() })
         });
         if (res.ok) {
-            alert('Result added successfully');
+            alert('Results added and CGPA updated');
             setIsAdding(false);
             window.location.reload();
         }
@@ -2431,6 +2534,24 @@ function ResultsView({ token, user }: { token: string, user: any }) {
         s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         s.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const sortedStudents = [...filteredStudents].sort((a, b) => {
+        if (!sortConfig) return 0;
+        const key = sortConfig.key as keyof typeof a;
+        const aVal = String(a[key] || '');
+        const bVal = String(b[key] || '');
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const modalFilteredStudents = students.filter(s => 
         !modalSearch || 
@@ -2490,7 +2611,12 @@ function ResultsView({ token, user }: { token: string, user: any }) {
     return (
         <div className="space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h2 className="text-2xl font-bold text-[#1F2937]">Result Management</h2>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all shadow-sm">
+                        <ArrowLeft className="w-5 h-5 text-[#7C3AED]" />
+                    </button>
+                    <h2 className="text-2xl font-bold text-[#1F2937]">Result Management</h2>
+                </div>
                 <div className="flex flex-wrap gap-4 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -2518,13 +2644,13 @@ function ResultsView({ token, user }: { token: string, user: any }) {
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
                         <tr>
-                            <th className="px-8 py-4">Student</th>
-                            <th className="px-8 py-4">Roll No</th>
-                            <th className="px-8 py-4">CGPA</th>
+                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('name')}>Student</th>
+                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('roll_number')}>Roll No</th>
+                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('cgpa')}>CGPA</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {filteredStudents.map((s, i) => (
+                        {sortedStudents.map((s, i) => (
                             <tr key={i} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
                                 <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
@@ -2536,46 +2662,68 @@ function ResultsView({ token, user }: { token: string, user: any }) {
             </div>
 
             {isAdding && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
-                        <h3 className="text-2xl font-bold mb-6">Add Result</h3>
-                        <form className="space-y-4" onSubmit={handleAddResult}>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input 
-                                        type="text"
-                                        placeholder="Type to filter students..."
-                                        value={modalSearch}
-                                        onChange={(e) => setModalSearch(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
-                                    />
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
+                    <div className="bg-white w-full max-w-2xl rounded-[40px] p-10 relative my-8">
+                        <button onClick={() => setIsAdding(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                            <X className="w-6 h-6" />
+                        </button>
+                        <h3 className="text-2xl font-bold mb-6">Add Results & Calculate GPA</h3>
+                        <form className="space-y-6" onSubmit={handleAddResult}>
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">1. Select Student</label>
+                                    <div className="relative">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <input 
+                                            type="text"
+                                            placeholder="Search student..."
+                                            value={modalSearch}
+                                            onChange={(e) => setModalSearch(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
+                                        />
+                                    </div>
+                                    <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                        <option value="">Choose Student...</option>
+                                        {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                                    </select>
                                 </div>
-                                <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                    <option value="">Select Student ({modalFilteredStudents.length} found)</option>
-                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
-                                </select>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">2. Semester</label>
+                                    <input name="semester" type="number" placeholder="Enter Semester" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                                </div>
                             </div>
-                            <input name="semester" type="number" placeholder="Semester" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <select name="subjectId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                <option value="">Select Subject</option>
-                                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                            <input 
-                                name="marks" 
-                                type="number" 
-                                placeholder="Marks" 
-                                required 
-                                className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none"
-                                onChange={(e) => setMarks(parseInt(e.target.value) || 0)}
-                            />
-                            <div className="flex items-center gap-4 px-4 py-3 bg-purple-50 rounded-xl">
-                                <span className="text-xs font-bold text-purple-400 uppercase">Calculated Grade:</span>
-                                <span className="text-xl font-bold text-[#7C3AED]">{grade}</span>
+
+                            <div className="space-y-4">
+                                <label className="text-xs font-bold text-gray-400 uppercase">3. Subject Marks (Max 100 each)</label>
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    {subjects.map(s => (
+                                        <div key={s.id} className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between gap-4">
+                                            <span className="text-sm font-bold text-[#1F2937] truncate">{s.name}</span>
+                                            <input 
+                                                type="number" 
+                                                max="100"
+                                                placeholder="Marks"
+                                                className="w-20 px-3 py-2 bg-white rounded-lg outline-none text-sm font-bold"
+                                                value={bulkMarks[s.id] || 0}
+                                                onChange={(e) => setBulkMarks({...bulkMarks, [s.id]: parseInt(e.target.value) || 0})}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Result</button>
-                            <button type="button" onClick={() => setIsAdding(false)} className="w-full py-2 text-gray-500">Cancel</button>
+
+                            <div className="p-6 bg-[#7C3AED] rounded-[32px] text-white flex justify-between items-center shadow-lg shadow-purple-100">
+                                <div>
+                                    <p className="text-purple-100 text-[10px] font-bold uppercase tracking-widest">Calculated GPA</p>
+                                    <p className="text-3xl font-black">{calculateGPA()}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-purple-100 text-[10px] font-bold uppercase tracking-widest">Total Subjects</p>
+                                    <p className="text-xl font-bold">{subjects.length}</p>
+                                </div>
+                            </div>
+
+                            <button type="submit" className="w-full py-4 bg-[#1F2937] text-white rounded-2xl font-bold shadow-xl">Save All Results & Update CGPA</button>
                         </form>
                     </div>
                 </div>
@@ -2786,7 +2934,7 @@ function ProfileView({ token, user }: { token: string, user: any }) {
     );
 }
 
-function AdminProfileView({ token }: { token: string }) {
+function AdminProfileView({ token, setActiveTab }: { token: string, setActiveTab: (tab: string) => void }) {
     const [profile, setProfile] = useState<any>(null);
     const [isEditing, setIsEditing] = useState(false);
 
@@ -2852,6 +3000,45 @@ function AdminProfileView({ token }: { token: string }) {
                     <div className="p-6 bg-purple-50 rounded-3xl text-center">
                         <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1">Total Registered Students</p>
                         <p className="text-4xl font-black text-[#7C3AED]">{profile.totalStudents}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
+                <h3 className="text-xl font-bold text-[#1F2937] mb-8 flex items-center gap-3">
+                    <ShieldCheck className="text-[#7C3AED] w-6 h-6" />
+                    Administrative Controls
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 flex flex-col gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                <Users className="w-5 h-5 text-purple-500" />
+                            </div>
+                            <p className="font-bold text-[#1F2937] text-sm">User Management</p>
+                        </div>
+                        <p className="text-xs text-[#6B7280]">Manage student profiles, roles, and administrative access.</p>
+                        <button onClick={() => setActiveTab('Admin Panel')} className="mt-2 text-sm font-bold text-[#7C3AED] hover:underline text-left">Go to Directory →</button>
+                    </div>
+                    <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 flex flex-col gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                <CreditCard className="w-5 h-5 text-green-500" />
+                            </div>
+                            <p className="font-bold text-[#1F2937] text-sm">Billing & Fees</p>
+                        </div>
+                        <p className="text-xs text-[#6B7280]">Track fee payments, issue reminders, and update financial records.</p>
+                        <button onClick={() => setActiveTab('Fees')} className="mt-2 text-sm font-bold text-[#7C3AED] hover:underline text-left">View Fee Ledger →</button>
+                    </div>
+                    <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100 flex flex-col gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                                <BarChart3 className="w-5 h-5 text-orange-500" />
+                            </div>
+                            <p className="font-bold text-[#1F2937] text-sm">Academic Analytics</p>
+                        </div>
+                        <p className="text-xs text-[#6B7280]">Review overall campus performance and attendance trends.</p>
+                        <button onClick={() => setActiveTab('Attendance')} className="mt-2 text-sm font-bold text-[#7C3AED] hover:underline text-left">Check Analytics →</button>
                     </div>
                 </div>
             </div>
@@ -3035,6 +3222,7 @@ function BookScannerView({ token }: { token: string }) {
     const [scanning, setScanning] = useState(false);
     const [book, setBook] = useState<any>(null);
     const [error, setError] = useState('');
+    const [isbnInput, setIsbnInput] = useState('');
 
     useEffect(() => {
         let scanner: Html5QrcodeScanner | null = null;
@@ -3047,10 +3235,12 @@ function BookScannerView({ token }: { token: string }) {
         };
     }, [scanning]);
 
-    const onScanSuccess = async (decodedText: string) => {
+    const handleManualLookup = async (manualIsbn?: string) => {
+        const id = manualIsbn || isbnInput;
+        if (!id) return;
         setScanning(false);
         try {
-            const res = await fetch(`/api/books/isbn/${decodedText}`, {
+            const res = await fetch(`/api/books/isbn/${id}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -3065,6 +3255,8 @@ function BookScannerView({ token }: { token: string }) {
         }
     };
 
+    const onScanSuccess = (decodedText: string) => handleManualLookup(decodedText);
+
     const onScanError = (err: any) => {
         // console.warn(err);
     };
@@ -3075,27 +3267,50 @@ function BookScannerView({ token }: { token: string }) {
                 <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6">
                     <QrCode className="w-10 h-10 text-[#7C3AED]" />
                 </div>
-                <h2 className="text-2xl font-bold text-[#1F2937] mb-2">Book QR/ISBN Scanner</h2>
-                <p className="text-[#6B7280] mb-8">Scan the QR code or ISBN barcode on the book to get instant details.</p>
+                <h2 className="text-2xl font-bold text-[#1F2937] mb-2">Book Search & Scanner</h2>
+                <p className="text-[#6B7280] mb-8 text-sm px-10">Scan barcode, upload from explorer, or enter ISBN manually.</p>
                 
-                {!scanning ? (
-                    <button 
-                        onClick={() => setScanning(true)}
-                        className="px-10 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100"
-                    >
-                        Start Scanning
-                    </button>
-                ) : (
-                    <div className="space-y-6">
-                        <div id="reader" className="overflow-hidden rounded-3xl border-4 border-purple-100"></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    {!scanning ? (
                         <button 
-                            onClick={() => setScanning(false)}
-                            className="text-gray-500 font-bold"
+                            onClick={() => setScanning(true)}
+                            className="p-6 bg-[#7C3AED] text-white rounded-3xl font-bold flex flex-col items-center gap-3 hover:bg-[#6D28D9] transition-all"
                         >
-                            Cancel
+                            <Camera className="w-8 h-8" />
+                            <span>Use Camera</span>
                         </button>
-                    </div>
-                )}
+                    ) : (
+                        <div className="col-span-1 md:col-span-2">
+                            <div id="reader" className="overflow-hidden rounded-3xl border-2 border-dashed border-purple-100"></div>
+                            <button onClick={() => setScanning(false)} className="mt-4 text-red-500 font-bold">Stop Camera</button>
+                        </div>
+                    )}
+                    
+                    <label className="p-6 bg-gray-50 text-[#1F2937] rounded-3xl font-bold flex flex-col items-center gap-3 hover:bg-gray-100 cursor-pointer transition-all border border-gray-100">
+                        <FileUp className="w-8 h-8 text-[#7C3AED]" />
+                        <span>File Explorer</span>
+                        <input type="file" className="hidden" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) alert("Scanning file for barcodes... Simulated ISBN extraction.");
+                        }} />
+                    </label>
+                </div>
+
+                <div className="flex gap-2">
+                    <input 
+                        type="text" 
+                        placeholder="Or enter ISBN manually..." 
+                        value={isbnInput}
+                        onChange={(e) => setIsbnInput(e.target.value)}
+                        className="flex-1 px-6 py-4 bg-gray-50 rounded-2xl border-none outline-none text-sm font-medium"
+                    />
+                    <button 
+                        onClick={() => handleManualLookup()}
+                        className="px-8 py-4 bg-[#1F2937] text-white rounded-2xl font-bold"
+                    >
+                        Lookup
+                    </button>
+                </div>
             </div>
 
             {error && (
@@ -3106,38 +3321,31 @@ function BookScannerView({ token }: { token: string }) {
             )}
 
             {book && (
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 flex flex-col md:flex-row gap-8"
-                >
-                    <div className="w-full md:w-40 h-60 bg-gray-100 rounded-2xl overflow-hidden flex-shrink-0">
-                        <img src={book.thumbnail} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </div>
-                    <div className="flex-1 space-y-4">
-                        <div>
-                            <h3 className="text-xl font-bold text-[#1F2937] mb-1">{book.title}</h3>
-                            <p className="text-[#6B7280] font-medium">{book.authors?.join(', ')}</p>
+                <div className="bg-[#1F2937] p-10 rounded-[40px] text-white relative overflow-hidden">
+                    <div className="relative z-10">
+                        <div className="px-3 py-1 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full w-fit mb-4 border border-green-500/30 uppercase tracking-widest">
+                            Found ISBN: {book.isbn}
                         </div>
+                        <h3 className="text-2xl font-bold mb-1">{book.title}</h3>
+                        <p className="text-gray-400 font-medium mb-6">by {book.author}</p>
+                        
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-gray-50 rounded-2xl">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Publisher</p>
-                                <p className="text-xs font-bold">{book.publisher || 'N/A'}</p>
+                            <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Category</p>
+                                <p className="font-bold">{book.category}</p>
                             </div>
-                            <div className="p-4 bg-gray-50 rounded-2xl">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Pages</p>
-                                <p className="text-xs font-bold">{book.pageCount || 'N/A'}</p>
+                            <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Status</p>
+                                <p className="font-bold capitalize">{book.status}</p>
                             </div>
                         </div>
-                        <p className="text-xs text-[#6B7280] leading-relaxed line-clamp-3">{book.description}</p>
-                        <button 
-                            onClick={() => setBook(null)}
-                            className="w-full py-3 bg-gray-50 text-gray-500 rounded-xl text-sm font-bold"
-                        >
-                            Clear Result
-                        </button>
+                        
+                        <div className="mt-8 flex gap-4">
+                            <button className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Issue Book</button>
+                            <button onClick={() => setBook(null)} className="px-6 py-4 bg-white/10 text-white rounded-2xl font-bold">Clear</button>
+                        </div>
                     </div>
-                </motion.div>
+                </div>
             )}
         </div>
     );

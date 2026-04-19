@@ -54,7 +54,7 @@ export default function LandingPage() {
                             ))}
                         </div>
                         <p className="text-sm text-[#6B7280]">
-                            <span className="font-bold text-[#1F2937]">2,000+</span> Students already joined
+                            <span className="font-bold text-[#1F2937]">2+</span> Students already joined
                         </p>
                     </div>
                 </motion.div>

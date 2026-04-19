@@ -88,23 +88,23 @@ if (librarianExists.count === 0) {
         db.prepare("INSERT INTO library_status (status) VALUES (?)").run("open");
     }
     
-    // Create 200 Students if count is low
+    // Create 2 Students if count is low
     const studentCount = db.prepare("SELECT count(*) as count FROM users WHERE role = 'student'").get() as { count: number };
-    if (studentCount.count < 10) {
+    if (studentCount.count < 2) {
         const insertUser = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)");
         const insertStudent = db.prepare("INSERT INTO students (user_id, roll_number, semester, cgpa, fee_status) VALUES (?, ?, ?, ?, ?)");
         
-        for (let i = 1; i <= 200; i++) {
+        for (let i = 1; i <= 2; i++) {
             const name = `Student ${i}`;
             const email = `student${i}@college.edu`;
-            const dept = i % 2 === 0 ? "Computer Science" : "Information Technology";
+            const dept = "Computer Science";
             const result = insertUser.run(name, email, hashedPassword, "student", dept);
             const userId = result.lastInsertRowid;
             
             const roll = `CS2026${String(i).padStart(3, '0')}`;
-            const semester = (i % 8) + 1;
-            const cgpa = (Math.random() * 4 + 6).toFixed(2); // CGPA between 6.0 and 10.0
-            const feeStatus = i % 5 === 0 ? 'pending' : 'paid';
+            const semester = 4;
+            const cgpa = "0.00"; 
+            const feeStatus = 'paid';
             
             insertStudent.run(userId, roll, semester, cgpa, feeStatus);
 
@@ -115,15 +115,20 @@ if (librarianExists.count === 0) {
         }
     }
 
-    // Seed some subjects if empty
-    const subjectCount = db.prepare("SELECT count(*) as count FROM subjects").get() as { count: number };
-    if (subjectCount.count === 0) {
-        db.prepare("INSERT INTO subjects (code, name, semester, department) VALUES (?, ?, ?, ?)").run(
-            "CS401", "Database Management Systems", 4, "Computer Science"
-        );
-        db.prepare("INSERT INTO subjects (code, name, semester, department) VALUES (?, ?, ?, ?)").run(
-            "CS402", "Operating Systems", 4, "Computer Science"
-        );
+    // Seed specified subjects if empty
+    const subjectsToSeed = [
+        { code: "CS401", name: "DBMS", sem: 4 },
+        { code: "MA401", name: "Linear Algebra", sem: 4 },
+        { code: "CS402", name: "Design Algorithm and Analysis", sem: 4 },
+        { code: "CS403", name: "Java", sem: 4 },
+        { code: "CS404", name: "Python", sem: 4 }
+    ];
+    
+    // Clear and re-seed to ensure correct subjects for the task
+    db.prepare("DELETE FROM subjects").run();
+    const insertSub = db.prepare("INSERT INTO subjects (code, name, semester, department) VALUES (?, ?, ?, ?)");
+    for (const s of subjectsToSeed) {
+        insertSub.run(s.code, s.name, s.sem, "Computer Science");
     }
 
     // Seed some books if empty
@@ -135,6 +140,67 @@ if (librarianExists.count === 0) {
         db.prepare("INSERT INTO books (title, author, category) VALUES (?, ?, ?)").run(
             "The Pragmatic Programmer", "Andrew Hunt", "Software Engineering"
         );
+    }
+
+    // Seed some IA schedules if empty
+    const iaCount = db.prepare("SELECT count(*) as count FROM ia_schedules").get() as { count: number };
+    if (iaCount.count === 0) {
+        const subjects = db.prepare("SELECT id FROM subjects").all() as any[];
+        if (subjects.length > 0) {
+            const today = new Date();
+            
+            // IA 1: Exactly 1 week from now (triggers notification)
+            const futureDate1 = new Date();
+            futureDate1.setDate(today.getDate() + 7);
+            const dateStr1 = futureDate1.toISOString().split('T')[0];
+            
+            db.prepare("INSERT INTO ia_schedules (subject_id, ia_number, date) VALUES (?, ?, ?)").run(
+                subjects[0].id, 1, dateStr1
+            );
+
+            // IA 2: In 2 weeks
+            if (subjects.length > 1) {
+                const futureDate2 = new Date();
+                futureDate2.setDate(today.getDate() + 14);
+                const dateStr2 = futureDate2.toISOString().split('T')[0];
+                db.prepare("INSERT INTO ia_schedules (subject_id, ia_number, date) VALUES (?, ?, ?)").run(
+                    subjects[1].id, 2, dateStr2
+                );
+            }
+        }
+    }
+}
+
+// IA Notification Logic for Faculty
+function checkIANotifications() {
+    const today = new Date();
+    const oneWeekFromNow = new Date();
+    oneWeekFromNow.setDate(today.getDate() + 7);
+    const dateStr = oneWeekFromNow.toISOString().split('T')[0];
+
+    // Find IAs that are exactly 1 week away
+    const upcomingIAs = db.prepare(`
+        SELECT ia.*, s.name as subject_name
+        FROM ia_schedules ia
+        JOIN subjects s ON ia.subject_id = s.id
+        WHERE ia.date = ?
+    `).all(dateStr) as any[];
+
+    const facultyList = db.prepare("SELECT id FROM users WHERE role = 'faculty'").all() as any[];
+
+    for (const ia of upcomingIAs) {
+        const title = `Reminder: Upload Resources for ${ia.subject_name} IA ${ia.ia_number}`;
+        const message = `Your IA is scheduled for ${ia.date} (in 1 week). Please upload model papers and question banks in the Study Materials section.`;
+        
+        for (const faculty of facultyList) {
+            // Check if notification already exists for this specific IA reminder to avoid duplication
+            const exists = db.prepare("SELECT id FROM notifications WHERE title = ? AND user_id = ?").get(title, faculty.id);
+            if (!exists) {
+                db.prepare("INSERT INTO notifications (title, message, target_role, user_id) VALUES (?, ?, ?, ?)").run(
+                    title, message, 'faculty', faculty.id
+                );
+            }
+        }
     }
 }
 
@@ -349,6 +415,9 @@ async function startServer() {
     app.get("/api/faculty/analysis", authenticateToken, (req: any, res) => {
         if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
         
+        // Trigger IA notification check
+        checkIANotifications();
+
         const stats = db.prepare(`
             SELECT 
                 COUNT(CASE WHEN cgpa >= 9.0 THEN 1 END) as excelling,

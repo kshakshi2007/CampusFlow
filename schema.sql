@@ -213,3 +213,12 @@ CREATE TABLE IF NOT EXISTS event_attendance (
     marked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (event_id) REFERENCES events(id)
 );
+
+-- IA Schedules
+CREATE TABLE IF NOT EXISTS ia_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL,
+    ia_number INTEGER NOT NULL, -- 1, 2, 3
+    date DATE NOT NULL,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id)
+);
