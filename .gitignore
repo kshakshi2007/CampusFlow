@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Database files
+campusflow.db
+campusflow_mysql.sql
+schema.sql
+schem2.sql
+supabase-setup.sql
