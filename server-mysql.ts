@@ -4,8 +4,17 @@ import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import mysql from "mysql2/promise";
+
 import fs from "fs";
+import mysql from "mysql2/promise";
+
+export const db = mysql.createPool({
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "campusflow",
+});
+
 
 const __dirname = path.resolve();
 const JWT_SECRET = process.env.JWT_SECRET || "campusflow-secret-key";
@@ -632,6 +641,28 @@ async function startServer() {
                 "INSERT INTO fees (student_id, amount, due_date, status) VALUES (?, ?, ?, ?)",
                 [studentId, amount, dueDate, status || 'pending']
             );
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ message: "Server error" });
+        }
+    });
+
+    // Admin: Update Fee Status
+    app.post("/api/admin/fees/update", authenticateToken, async (req: any, res) => {
+        try {
+            if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+            
+            const { feeId, status } = req.body;
+            
+            if (!['paid', 'pending', 'partial'].includes(status)) {
+                return res.status(400).json({ message: "Invalid status value" });
+            }
+            
+            await query(
+                "UPDATE fees SET status = ? WHERE id = ?",
+                [status, feeId]
+            );
+            
             res.json({ success: true });
         } catch (error) {
             res.status(500).json({ message: "Server error" });

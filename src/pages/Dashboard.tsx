@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from 'react';
+
+import React from "react";
+import { useEffect, useState } from "react";
+
 import { motion } from 'motion/react';
 import { 
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
@@ -22,6 +25,22 @@ const safeJson = async (res: Response) => {
 };
 
 export default function Dashboard() {
+    const [attendance, setAttendance] = useState([]);
+
+const fetchAttendance = async () => {
+  try {
+    const res = await fetch("http://localhost:3000/attendance");
+    const data = await res.json();
+    console.log(data);
+    setAttendance(data);
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+useEffect(() => {
+  fetchAttendance();
+}, []);
     const { user, logout, token } = useAuth();
     const navigate = useNavigate();
     const [data, setData] = useState<any>(null);
@@ -478,27 +497,25 @@ function AttendanceModal({ token }: { token: string }) {
                         </button>
                         <h3 className="text-2xl font-bold text-[#1F2937] mb-6">Mark Attendance</h3>
                         <form onSubmit={handleSubmit} className="space-y-6">
-<<<<<<< Updated upstream
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input 
-                                        type="text"
-                                        placeholder="Type to filter..."
-                                        value={modalSearch}
-                                        onChange={(e) => setModalSearch(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
-                                    />
-                                </div>
-                                <select 
-=======
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Student ID (1-500)</label>
-                                <input 
-                                    type="number" 
-                                    required 
->>>>>>> Stashed changes
+<div className="space-y-2">
+    <label className="text-xs font-bold text-gray-400 uppercase">
+        Search & Select Student
+    </label>
+
+    <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        
+        <input 
+            type="text"
+            placeholder="Type to filter..."
+            value={modalSearch}
+            onChange={(e) => setModalSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
+        />
+    </div>
+
+    <select 
+       
                                     value={studentId}
                                     onChange={(e) => setStudentId(e.target.value)}
                                     required 
@@ -1773,20 +1790,38 @@ function FeesView({ token }: { token: string }) {
             .finally(() => setLoading(false));
     }, [token, user?.role]);
 
-    const updateFeeStatus = async (feeId: number, status: string) => {
-        await fetch('/api/admin/fees/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ feeId, status })
-        });
-        setFees(fees.map(f => f.id === feeId ? { ...f, status } : f));
-    };
-
     const filteredFees = fees.filter(f => 
         !searchTerm || 
         f.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const updateFeeStatus = async (feeId: number, newStatus: string) => {
+        try {
+            const res = await fetch('/api/admin/fees/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    feeId,
+                    status: newStatus
+                })
+            });
+
+            if (res.ok) {
+                // Update local state
+                setFees(fees.map(fee => 
+                    fee.id === feeId ? { ...fee, status: newStatus } : fee
+                ));
+            } else {
+                alert('Failed to update fee status');
+            }
+        } catch (error) {
+            alert('Error updating fee status');
+        }
+    };
 
     if (loading) return <div className="p-8 text-center">Loading fees...</div>;
 
@@ -2236,33 +2271,59 @@ function AdminPanelView({ token }: { token: string }) {
     );
 }
 
-function SidebarLink({ icon, label, active = false, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void }) {
-    return (
-        <motion.button 
-            whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
-            onClick={onClick}
-            className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl font-medium transition-all ${
-                active ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-100' : 'text-[#6B7280] hover:bg-gray-50'
-            }`}
-        >
-            {React.cloneElement(icon as React.ReactElement, { className: 'w-5 h-5' })}
-            {label}
-        </motion.button>
-    );
+function SidebarLink({
+  icon,
+  label,
+  active = false,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
+      onClick={onClick}
+      className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl font-medium transition-all ${
+        active
+          ? "bg-[#7C3AED] text-white shadow-lg shadow-purple-100"
+          : "text-[#6B7280] hover:bg-gray-50"
+      }`}
+    >
+      <span className="w-5 h-5 flex items-center justify-center">
+        {icon}
+      </span>
+      {label}
+    </motion.button>
+  );
 }
 
-function QuickAction({ icon, label, color }: { icon: React.ReactNode, label: string, color: string }) {
-    return (
-        <motion.button 
-            whileHover={{ y: -5 }}
-            className="flex flex-col items-center gap-3 p-6 bg-white rounded-[32px] shadow-sm border border-gray-50 group"
-        >
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 ${color}`}>
-                {React.cloneElement(icon as React.ReactElement, { className: 'w-7 h-7' })}
-            </div>
-            <span className="text-sm font-bold text-[#1F2937]">{label}</span>
-        </motion.button>
-    );
+function QuickAction({
+  icon,
+  label,
+  color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  color: string;
+}) {
+  return (
+    <motion.button
+      whileHover={{ y: -5 }}
+      className="flex flex-col items-center gap-3 p-6 bg-white rounded-[32px] shadow-sm border border-gray-50 group"
+    >
+      <div
+        className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 ${color}`}
+      >
+        <span className="w-5 h-5 flex items-center justify-center">
+          {icon}
+        </span>
+      </div>
+      <span className="text-sm font-bold text-[#1F2937]">{label}</span>
+    </motion.button>
+  );
 }
 
 function AttendanceView({ token, user, setActiveTab }: { token: string, user: any, setActiveTab: (t: string) => void }) {
