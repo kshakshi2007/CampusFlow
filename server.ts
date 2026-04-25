@@ -94,7 +94,7 @@ if (librarianExists.count === 0) {
         const insertUser = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)");
         const insertStudent = db.prepare("INSERT INTO students (user_id, roll_number, semester, cgpa, fee_status) VALUES (?, ?, ?, ?, ?)");
         
-        for (let i = 1; i <= 200; i++) {
+        for (let i = 1; i <= 2; i++) {
             const name = `Student ${i}`;
             const email = `student${i}@college.edu`;
             const dept = "Computer Science";
@@ -106,12 +106,11 @@ if (librarianExists.count === 0) {
             const cgpa = "0.00"; 
             const feeStatus = 'paid';
             
-            const studentResult = insertStudent.run(userId, roll, semester, cgpa, feeStatus);
-            const studentId = studentResult.lastInsertRowid;
+            insertStudent.run(userId, roll, semester, cgpa, feeStatus);
 
             // Seed Fees
             db.prepare("INSERT INTO fees (student_id, amount, due_date, status) VALUES (?, ?, ?, ?)").run(
-                studentId, 45000, "2026-06-30", feeStatus
+                userId, 45000, "2026-06-30", feeStatus
             );
         }
     }
@@ -803,21 +802,60 @@ async function startServer() {
     app.get("/api/books/isbn/:isbn", async (req, res) => {
         const { isbn } = req.params;
         try {
+            // Try ISBN search first
             const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-            const data = await response.json();
-            if (data.totalItems > 0) {
+            let data = await response.json();
+            
+            // If nothing found by ISBN, try general query with the same string in case it's a generic ID
+            if (data.totalItems === 0) {
+                const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${isbn}`);
+                data = await altResponse.json();
+            }
+
+            if (data.items && data.items.length > 0) {
                 const book = data.items[0].volumeInfo;
+                const identifiers = data.items[0].volumeInfo.industryIdentifiers || [];
+                const actualIsbn = identifiers.find((id: any) => id.type.includes("ISBN"))?.identifier || isbn;
+
                 res.json({
                     title: book.title,
                     author: book.authors ? book.authors.join(", ") : "Unknown",
                     coverImage: book.imageLinks ? book.imageLinks.thumbnail : null,
-                    description: book.description || "No description available."
+                    description: book.description || "No description available.",
+                    category: book.categories ? book.categories[0] : "General",
+                    isbn: actualIsbn,
+                    status: 'available'
                 });
             } else {
                 res.status(404).json({ message: "Book not found" });
             }
         } catch (e) {
             res.status(500).json({ message: "Error fetching book details" });
+        }
+    });
+
+    // Book Search by Title/Author
+    app.get("/api/books/remote-search", async (req, res) => {
+        const { q } = req.query;
+        if (!q) return res.status(400).json({ message: "Query is required" });
+        try {
+            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5`);
+            const data = await response.json();
+            
+            if (data.items && data.items.length > 0) {
+                const results = data.items.map((item: any) => ({
+                    title: item.volumeInfo.title,
+                    author: item.volumeInfo.authors ? item.volumeInfo.authors.join(", ") : "Unknown",
+                    coverImage: item.volumeInfo.imageLinks ? item.volumeInfo.imageLinks.thumbnail : null,
+                    isbn: item.volumeInfo.industryIdentifiers?.find((id: any) => id.type.includes("ISBN"))?.identifier || "",
+                    category: item.volumeInfo.categories ? item.volumeInfo.categories[0] : "General"
+                }));
+                res.json(results);
+            } else {
+                res.json([]);
+            }
+        } catch (e) {
+            res.status(500).json({ message: "Error searching books" });
         }
     });
     if (process.env.NODE_ENV !== "production") {

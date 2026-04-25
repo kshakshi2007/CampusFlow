@@ -131,7 +131,7 @@ export default function LandingPage() {
     );
 }
 
-function FeatureCard({ icon, title, description }: { icon: React.ReactElement<{ className?: string }>, title: string, description: string }) {
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
     return (
         <div className="p-8 rounded-[32px] bg-[#F9FAFB] border border-gray-100 hover:shadow-xl transition-all group">
             <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform">

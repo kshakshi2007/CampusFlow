@@ -1,7 +1,4 @@
-
-import React from "react";
-import { useEffect, useState } from "react";
-
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { 
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
@@ -13,6 +10,7 @@ import {
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { Subject, AttendanceStats, AttendanceRecord } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 const safeJson = async (res: Response) => {
@@ -25,22 +23,6 @@ const safeJson = async (res: Response) => {
 };
 
 export default function Dashboard() {
-    const [attendance, setAttendance] = useState([]);
-
-const fetchAttendance = async () => {
-  try {
-    const res = await fetch("http://localhost:3000/attendance");
-    const data = await res.json();
-    console.log(data);
-    setAttendance(data);
-  } catch (err) {
-    console.error(err);
-  }
-};
-
-useEffect(() => {
-  fetchAttendance();
-}, []);
     const { user, logout, token } = useAuth();
     const navigate = useNavigate();
     const [data, setData] = useState<any>(null);
@@ -497,25 +479,19 @@ function AttendanceModal({ token }: { token: string }) {
                         </button>
                         <h3 className="text-2xl font-bold text-[#1F2937] mb-6">Mark Attendance</h3>
                         <form onSubmit={handleSubmit} className="space-y-6">
-<div className="space-y-2">
-    <label className="text-xs font-bold text-gray-400 uppercase">
-        Search & Select Student
-    </label>
-
-    <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        
-        <input 
-            type="text"
-            placeholder="Type to filter..."
-            value={modalSearch}
-            onChange={(e) => setModalSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
-        />
-    </div>
-
-    <select 
-       
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Type to filter..."
+                                        value={modalSearch}
+                                        onChange={(e) => setModalSearch(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
+                                    />
+                                </div>
+                                <select 
                                     value={studentId}
                                     onChange={(e) => setStudentId(e.target.value)}
                                     required 
@@ -1790,38 +1766,20 @@ function FeesView({ token }: { token: string }) {
             .finally(() => setLoading(false));
     }, [token, user?.role]);
 
+    const updateFeeStatus = async (feeId: number, status: string) => {
+        await fetch('/api/admin/fees/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ feeId, status })
+        });
+        setFees(fees.map(f => f.id === feeId ? { ...f, status } : f));
+    };
+
     const filteredFees = fees.filter(f => 
         !searchTerm || 
         f.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-
-    const updateFeeStatus = async (feeId: number, newStatus: string) => {
-        try {
-            const res = await fetch('/api/admin/fees/update', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    feeId,
-                    status: newStatus
-                })
-            });
-
-            if (res.ok) {
-                // Update local state
-                setFees(fees.map(fee => 
-                    fee.id === feeId ? { ...fee, status: newStatus } : fee
-                ));
-            } else {
-                alert('Failed to update fee status');
-            }
-        } catch (error) {
-            alert('Error updating fee status');
-        }
-    };
 
     if (loading) return <div className="p-8 text-center">Loading fees...</div>;
 
@@ -2271,253 +2229,388 @@ function AdminPanelView({ token }: { token: string }) {
     );
 }
 
-function SidebarLink({
-  icon,
-  label,
-  active = false,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <motion.button
-      whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
-      onClick={onClick}
-      className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl font-medium transition-all ${
-        active
-          ? "bg-[#7C3AED] text-white shadow-lg shadow-purple-100"
-          : "text-[#6B7280] hover:bg-gray-50"
-      }`}
-    >
-      <span className="w-5 h-5 flex items-center justify-center">
-        {icon}
-      </span>
-      {label}
-    </motion.button>
-  );
+function SidebarLink({ icon, label, active = false, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick: () => void }) {
+    return (
+        <motion.button 
+            whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
+            onClick={onClick}
+            className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl font-medium transition-all ${
+                active ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-100' : 'text-[#6B7280] hover:bg-gray-50'
+            }`}
+        >
+            {React.cloneElement(icon as React.ReactElement, { className: 'w-5 h-5' })}
+            {label}
+        </motion.button>
+    );
 }
 
-function QuickAction({
-  icon,
-  label,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  color: string;
-}) {
-  return (
-    <motion.button
-      whileHover={{ y: -5 }}
-      className="flex flex-col items-center gap-3 p-6 bg-white rounded-[32px] shadow-sm border border-gray-50 group"
-    >
-      <div
-        className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 ${color}`}
-      >
-        <span className="w-5 h-5 flex items-center justify-center">
-          {icon}
-        </span>
-      </div>
-      <span className="text-sm font-bold text-[#1F2937]">{label}</span>
-    </motion.button>
-  );
+function QuickAction({ icon, label, color }: { icon: React.ReactNode, label: string, color: string }) {
+    return (
+        <motion.button 
+            whileHover={{ y: -5 }}
+            className="flex flex-col items-center gap-3 p-6 bg-white rounded-[32px] shadow-sm border border-gray-50 group"
+        >
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 ${color}`}>
+                {React.cloneElement(icon as React.ReactElement, { className: 'w-7 h-7' })}
+            </div>
+            <span className="text-sm font-bold text-[#1F2937]">{label}</span>
+        </motion.button>
+    );
 }
 
 function AttendanceView({ token, user, setActiveTab }: { token: string, user: any, setActiveTab: (t: string) => void }) {
     const [students, setStudents] = useState<any[]>([]);
-    const [subjects, setSubjects] = useState<any[]>([]);
-    const [stats, setStats] = useState<any[]>([]);
+    const [subjects, setSubjects] = useState<Subject[]>([]);
+    const [stats, setStats] = useState<AttendanceStats[]>([]);
+    const [attendanceLog, setAttendanceLog] = useState<AttendanceRecord[]>([]);
     const [isMarking, setIsMarking] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [modalSearch, setModalSearch] = useState('');
-    const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'} | null>(null);
+    const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
+    const [attendanceData, setAttendanceData] = useState<{[key: number]: string}>({});
+    const [activeSubTab, setActiveSubTab] = useState<'take' | 'history' | 'stats'>('stats');
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
             fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(async res => (res.ok ? await safeJson(res) : []) || [])
                 .then(setStudents);
+            fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setSubjects);
         }
-        fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(async res => (res.ok ? await safeJson(res) : []) || [])
-            .then(setSubjects);
         
         if (user.role === 'student') {
             fetch('/api/attendance/stats', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(async res => (res.ok ? await safeJson(res) : []) || [])
                 .then(setStats);
+            fetch('/api/attendance/log', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setAttendanceLog);
         }
     }, [token, user.role]);
 
+    const handleBulkMark = (status: 'present' | 'absent' | 'no_class') => {
+        const newData = { ...attendanceData };
+        students.forEach(s => newData[s.id] = status);
+        setAttendanceData(newData);
+    };
+
     const handleMarkAttendance = async (e: React.FormEvent) => {
         e.preventDefault();
-        const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = Object.fromEntries(formData.entries());
-        
-        const res = await fetch('/api/faculty/attendance', {
+        const records = Object.entries(attendanceData).map(([id, status]) => ({
+            studentId: Number(id),
+            status,
+            subjectId: selectedSubject,
+            date: new Date().toISOString()
+        }));
+
+        const res = await fetch('/api/faculty/attendance/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ records })
         });
         if (res.ok) {
-            alert('Attendance marked successfully');
+            alert('Attendance records saved successfully');
             setIsMarking(false);
+            setAttendanceData({});
         }
     };
 
     if (user.role === 'student') {
-        const subjectStats = stats.reduce((acc: any, curr: any) => {
-            if (!acc[curr.subject]) acc[curr.subject] = [];
-            acc[curr.subject].push(curr);
-            return acc;
-        }, {});
-
+        const lowAttendance = stats.filter(s => s.percentage < 75);
         return (
             <div className="space-y-8">
-                <h2 className="text-2xl font-bold text-[#1F2937]">Your Attendance Graphs</h2>
-                <div className="grid lg:grid-cols-2 gap-8">
-                    {Object.entries(subjectStats).map(([subject, data]: [string, any]) => (
-                        <div key={subject} className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50 h-[400px]">
-                            <h3 className="text-lg font-bold mb-6">{subject}</h3>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={data}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-                                    <XAxis dataKey="date" hide />
-                                    <YAxis hide />
-                                    <Tooltip />
-                                    <Area type="monotone" dataKey="status" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.1} />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 shadow-sm">
+                        <ArrowLeft className="w-5 h-5 text-[#7C3AED]" />
+                    </button>
+                    <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Portal</h2>
+                </div>
+
+                {lowAttendance.length > 0 && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-red-50 p-6 rounded-[32px] border border-red-100 flex items-center gap-4 text-red-700"
+                    >
+                        <AlertCircle className="w-6 h-6 shrink-0" />
+                        <div>
+                            <p className="font-bold">Attendance Warning!</p>
+                            <p className="text-sm opacity-80">You have low attendance in {lowAttendance.length} subjects. Maintain 75% to remain exam eligible.</p>
+                        </div>
+                    </motion.div>
+                )}
+
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stats.map((s, i) => (
+                        <div key={i} className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                            <div className="flex justify-between items-start mb-6">
+                                <h3 className="font-bold text-[#1F2937]">{s.subjectName}</h3>
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${s.percentage >= 75 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                    {s.percentage}%
+                                </span>
+                            </div>
+                            <div className="w-full bg-gray-100 h-2 rounded-full mb-4 overflow-hidden">
+                                <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${s.percentage}%` }}
+                                    className={`h-full rounded-full ${s.percentage >= 75 ? 'bg-green-500' : 'bg-red-500'}`}
+                                />
+                            </div>
+                            <p className="text-xs text-secondary">{s.presentClasses} / {s.totalClasses} Classes attended</p>
                         </div>
                     ))}
+                </div>
+
+                <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
+                    <div className="p-8 border-b border-gray-50 flex justify-between items-center">
+                        <h3 className="text-xl font-bold">Daywise Attendance Sheet</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
+                                <tr>
+                                    <th className="px-8 py-4 bg-gray-50 sticky left-0 z-10">Date</th>
+                                    {subjects.filter(s => stats.some(st => st.subjectId === s.id)).map(sub => (
+                                        <th key={sub.id} className="px-6 py-4 text-center min-w-[120px]">{sub.name}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {(() => {
+                                    const grouped = attendanceLog.reduce((acc: any, log) => {
+                                        const d = new Date(log.date).toLocaleDateString();
+                                        if (!acc[d]) acc[d] = {};
+                                        acc[d][log.subjectId] = log.status;
+                                        return acc;
+                                    }, {});
+                                    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+                                    const activeSubs = subjects.filter(s => stats.some(st => st.subjectId === s.id));
+
+                                    return sortedDates.map((date, idx) => (
+                                        <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-8 py-5 text-sm font-medium sticky left-0 bg-white border-r border-gray-50">{date}</td>
+                                            {activeSubs.map(sub => {
+                                                const status = grouped[date][sub.id];
+                                                return (
+                                                    <td key={sub.id} className="px-6 py-5 text-center">
+                                                        {status ? (
+                                                            <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center text-[10px] font-bold uppercase transition-all ${
+                                                                status === 'present' ? 'bg-green-100 text-green-600' :
+                                                                status === 'absent' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'
+                                                            }`}>
+                                                                {status === 'present' ? 'P' : status === 'absent' ? 'A' : 'NC'}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-gray-200 text-[10px]">—</span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ));
+                                })()}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
+                    <div className="p-8 border-b border-gray-50 flex justify-between items-center">
+                        <h3 className="text-xl font-bold">Attendance Log</h3>
+                        <button className="text-sm font-bold text-[#7C3AED] flex items-center gap-2">
+                            <Download className="w-4 h-4" /> Download Report
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
+                                <tr>
+                                    <th className="px-8 py-4">Date</th>
+                                    <th className="px-8 py-4">Subject</th>
+                                    <th className="px-8 py-4">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {attendanceLog.map((log, i) => (
+                                    <tr key={i}>
+                                        <td className="px-8 py-5 text-sm">{new Date(log.date).toLocaleDateString()}</td>
+                                        <td className="px-8 py-5 font-medium">{subjects.find(s => s.id === log.subjectId)?.name || 'N/A'}</td>
+                                        <td className="px-8 py-5">
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                                log.status === 'present' ? 'bg-green-100 text-green-600' : 
+                                                log.status === 'absent' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                                {log.status === 'no_class' ? 'No Class' : log.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         );
     }
 
-    const filteredStudents = students.filter(s => 
-        !searchTerm || 
-        s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.roll_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    const sortedStudents = [...filteredStudents].sort((a, b) => {
-        if (!sortConfig) return 0;
-        const key = sortConfig.key as keyof typeof a;
-        const aVal = String(a[key] || '');
-        const bVal = String(b[key] || '');
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-    });
-
-    const requestSort = (key: string) => {
-        let direction: 'asc' | 'desc' = 'asc';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
-        setSortConfig({ key, direction });
-    };
-
-    const modalFilteredStudents = students.filter(s => 
-        !modalSearch || 
-        s.name?.toLowerCase().includes(modalSearch.toLowerCase()) ||
-        s.roll_number?.toLowerCase().includes(modalSearch.toLowerCase())
-    );
-
     return (
         <div className="space-y-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 transition-all shadow-sm">
+                    <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 shadow-sm">
                         <ArrowLeft className="w-5 h-5 text-[#7C3AED]" />
                     </button>
                     <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Management</h2>
                 </div>
-                <div className="flex flex-wrap gap-4 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-64">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input 
-                            type="text"
-                            placeholder="Search student..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-100 transition-all shadow-sm"
-                        />
-                    </div>
-                    <button 
-                        onClick={() => {
-                            setIsMarking(true);
-                            setModalSearch('');
-                        }}
-                        className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold whitespace-nowrap"
-                    >
-                        Mark Attendance
+                <div className="flex gap-4">
+                    <button onClick={() => setIsMarking(true)} className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl font-bold shadow-lg shadow-purple-200">
+                        Take Attendance
                     </button>
                 </div>
             </div>
 
-            <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
-                        <tr>
-                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('name')}>Student</th>
-                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('roll_number')}>Roll No</th>
-                            <th className="px-8 py-4 cursor-pointer hover:text-[#7C3AED]" onClick={() => requestSort('department')}>Department</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                        {sortedStudents.map((s, i) => (
-                            <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-8 py-5 font-bold text-[#1F2937]">{s.name}</td>
-                                <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
-                                <td className="px-8 py-5 text-sm text-[#6B7280]">{s.department}</td>
-                            </tr>
+            <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 p-8">
+                <div className="flex items-center gap-8 mb-8 border-b border-gray-50 pb-4">
+                    <button onClick={() => setActiveSubTab('stats')} className={`text-sm font-bold uppercase tracking-widest ${activeSubTab === 'stats' ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>Class Analytics</button>
+                    <button onClick={() => setActiveSubTab('history')} className={`text-sm font-bold uppercase tracking-widest ${activeSubTab === 'history' ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>History</button>
+                </div>
+
+                {activeSubTab === 'stats' && (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {subjects.map((sub, i) => (
+                            <div key={i} className="p-6 bg-gray-50 rounded-3xl">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{sub.code}</p>
+                                <h4 className="font-bold text-xl mb-4 truncate">{sub.name}</h4>
+                                <div className="flex justify-between items-center text-sm font-bold">
+                                    <span className="text-green-600">Avg: 82%</span>
+                                    <span className="text-secondary">42 Students</span>
+                                </div>
+                            </div>
                         ))}
-                    </tbody>
-                </table>
+                    </div>
+                )}
+
+                {activeSubTab === 'history' && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h4 className="font-bold text-[#1F2937]">Student Records</h4>
+                            <div className="flex gap-2">
+                                <button className="p-2 border border-gray-100 rounded-lg hover:bg-gray-50"><Search className="w-4 h-4 text-gray-400" /></button>
+                                <button className="px-4 py-2 bg-white border border-gray-100 rounded-lg text-xs font-bold flex items-center gap-2"><Download className="w-4 h-4" /> Export All</button>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="text-[10px] uppercase font-bold text-gray-400 border-b border-gray-50">
+                                    <tr>
+                                        <th className="pb-4">Student</th>
+                                        <th className="pb-4">Roll Number</th>
+                                        <th className="pb-4">Attendance</th>
+                                        <th className="pb-4 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {students.map((s, i) => (
+                                        <tr key={i} className="hover:bg-gray-50/50">
+                                            <td className="py-4 font-bold text-sm">{s.name}</td>
+                                            <td className="py-4 text-sm text-secondary">{s.roll_number}</td>
+                                            <td className="py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1 max-w-[100px] bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-green-500 rounded-full" style={{ width: '85%' }} />
+                                                    </div>
+                                                    <span className="text-xs font-bold text-green-600">85%</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 text-right">
+                                                <button className="text-[10px] font-bold uppercase tracking-widest text-[#7C3AED] hover:underline">View Sheet</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {isMarking && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
+                    <div className="bg-white w-full max-w-4xl rounded-[40px] p-10 relative my-8">
                         <button onClick={() => setIsMarking(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
                             <X className="w-6 h-6" />
                         </button>
-                        <h3 className="text-2xl font-bold mb-6">Mark Attendance</h3>
-                        <form className="space-y-4" onSubmit={handleMarkAttendance}>
+                        <h3 className="text-2xl font-bold mb-8">Mark Daily Attendance</h3>
+                        
+                        <div className="grid md:grid-cols-3 gap-6 mb-8">
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">Search & Select Student</label>
-                                <div className="relative">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input 
-                                        type="text"
-                                        placeholder="Type to filter students..."
-                                        value={modalSearch}
-                                        onChange={(e) => setModalSearch(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border-none outline-none text-sm"
-                                    />
-                                </div>
-                                <select name="studentId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                    <option value="">Select Student ({modalFilteredStudents.length} found)</option>
-                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                                <label className="text-xs font-bold text-gray-400 uppercase">1. Subject</label>
+                                <select 
+                                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium"
+                                    onChange={(e) => setSelectedSubject(Number(e.target.value))}
+                                >
+                                    <option value="">Select Subject...</option>
+                                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
-                            <select name="subjectId" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                <option value="">Select Subject</option>
-                                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                            <input name="date" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <select name="status" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
-                                <option value="present">Present</option>
-                                <option value="absent">Absent</option>
-                            </select>
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Save Attendance</button>
-                            <button type="button" onClick={() => setIsMarking(false)} className="w-full py-2 text-gray-500">Cancel</button>
-                        </form>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">2. Section</label>
+                                <select className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium">
+                                    <option>Section A</option>
+                                    <option>Section B</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">3. Smart Bulk</label>
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleBulkMark('present')} className="flex-1 py-3 bg-green-50 text-green-600 rounded-xl font-bold text-xs">ALL PRESENT</button>
+                                    <button onClick={() => handleBulkMark('absent')} className="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs">ALL ABSENT</button>
+                                    <button onClick={() => handleBulkMark('no_class')} className="flex-1 py-3 bg-gray-50 text-gray-500 rounded-xl font-bold text-xs">NO CLASS</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-3xl p-6 mb-8 max-h-96 overflow-y-auto scrollbar-hide">
+                            <table className="w-full text-left">
+                                <thead className="text-[10px] uppercase font-bold text-gray-400">
+                                    <tr>
+                                        <th className="pb-4">Student</th>
+                                        <th className="pb-4">Roll No</th>
+                                        <th className="pb-4 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {students.map((s, i) => (
+                                        <tr key={i} className="border-t border-gray-100">
+                                            <td className="py-4 font-bold">{s.name}</td>
+                                            <td className="py-4 text-xs text-secondary">{s.roll_number}</td>
+                                            <td className="py-4">
+                                                <div className="flex justify-center gap-2">
+                                                    {['present', 'absent', 'no_class'].map(status => (
+                                                        <button 
+                                                            key={status}
+                                                            onClick={() => setAttendanceData({...attendanceData, [s.id]: status as any})}
+                                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${
+                                                                attendanceData[s.id] === status ? 
+                                                                (status === 'present' ? 'bg-green-500 text-white' : status === 'absent' ? 'bg-red-500 text-white' : 'bg-gray-400 text-white') : 
+                                                                'bg-white text-gray-400 hover:bg-gray-100'
+                                                            }`}
+                                                        >
+                                                            {status === 'no_class' ? 'NC' : status[0]}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button onClick={handleMarkAttendance} className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-xl shadow-purple-200">Submit Attendance</button>
+                            <button onClick={() => setIsMarking(false)} className="px-8 py-4 bg-gray-50 text-gray-500 rounded-2xl font-bold">Cancel</button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -3142,6 +3235,7 @@ function AlumniView({ token, user }: { token: string, user: any }) {
     const [search, setSearch] = useState('');
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingAlumni, setEditingAlumni] = useState<any>(null);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
     useEffect(() => {
         fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -3149,10 +3243,16 @@ function AlumniView({ token, user }: { token: string, user: any }) {
             .then(setAlumni);
     }, [token]);
 
-    const filtered = alumni.filter(a => 
-        a.name.toLowerCase().includes(search.toLowerCase()) ||
-        a.batch_year.toString().includes(search)
-    );
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setSelectedImage(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleAddAlumni = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -3162,11 +3262,41 @@ function AlumniView({ token, user }: { token: string, user: any }) {
         const res = await fetch('/api/alumni', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+                ...payload,
+                imageUrl: selectedImage,
+                batchYear: parseInt(payload.batchYear as string)
+            })
         });
         if (res.ok) {
             setIsAddOpen(false);
-            window.location.reload();
+            setSelectedImage(null);
+            fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async r => (r.ok ? await safeJson(r) : []) || [])
+                .then(setAlumni);
+        }
+    };
+
+    const handleEditAlumni = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        
+        const res = await fetch(`/api/alumni/${editingAlumni.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+                ...payload,
+                imageUrl: selectedImage || editingAlumni.image_url,
+                batchYear: parseInt(payload.batchYear as string)
+            })
+        });
+        if (res.ok) {
+            setEditingAlumni(null);
+            setSelectedImage(null);
+            fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async r => (r.ok ? await safeJson(r) : []) || [])
+                .then(setAlumni);
         }
     };
 
@@ -3180,6 +3310,11 @@ function AlumniView({ token, user }: { token: string, user: any }) {
             setAlumni(alumni.filter(a => a.id !== id));
         }
     };
+
+    const filtered = alumni.filter(a => 
+        a.name.toLowerCase().includes(search.toLowerCase()) ||
+        a.batch_year.toString().includes(search)
+    );
 
     return (
         <div className="space-y-8">
@@ -3198,7 +3333,10 @@ function AlumniView({ token, user }: { token: string, user: any }) {
                     {user.role === 'admin' && (
                         <motion.button 
                             whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
-                            onClick={() => setIsAddOpen(true)} 
+                            onClick={() => {
+                                setSelectedImage(null);
+                                setIsAddOpen(true);
+                            }} 
                             className="px-6 py-3 bg-[#7C3AED] text-white rounded-2xl font-bold text-sm"
                         >
                             Add Alumni
@@ -3211,7 +3349,7 @@ function AlumniView({ token, user }: { token: string, user: any }) {
                 {filtered.map((a, i) => (
                     <div key={i} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-50 group">
                         <div className="h-48 bg-gray-100 relative">
-                            <img src={a.image_url || `https://picsum.photos/seed/${a.id}/400/300`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <img src={a.image_url || `https://api.dicebear.com/7.x/initials/svg?seed=${a.name}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
                                 <p className="text-white text-xs font-medium">{a.career_info}</p>
                             </div>
@@ -3230,7 +3368,10 @@ function AlumniView({ token, user }: { token: string, user: any }) {
                                 </div>
                                 {user.role === 'admin' && (
                                     <div className="flex gap-4 pt-2">
-                                        <button onClick={() => setEditingAlumni(a)} className="text-xs font-bold text-[#7C3AED]">Edit</button>
+                                        <button onClick={() => {
+                                            setSelectedImage(null);
+                                            setEditingAlumni(a);
+                                        }} className="text-xs font-bold text-[#7C3AED]">Edit</button>
                                         <button onClick={() => handleDelete(a.id)} className="text-xs font-bold text-red-500">Delete</button>
                                     </div>
                                 )}
@@ -3242,7 +3383,7 @@ function AlumniView({ token, user }: { token: string, user: any }) {
 
             {isAddOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative my-8">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative my-8 shadow-2xl">
                         <h3 className="text-2xl font-bold mb-6">Add Alumni Record</h3>
                         <form className="space-y-4" onSubmit={handleAddAlumni}>
                             <input name="name" placeholder="Full Name" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
@@ -3250,10 +3391,66 @@ function AlumniView({ token, user }: { token: string, user: any }) {
                             <input name="contactDetails" placeholder="Contact (Email/Phone)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <input name="careerInfo" placeholder="Current Career/Company" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <textarea name="achievements" placeholder="Achievements" className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
-                            <input name="imageUrl" placeholder="Image URL" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="documentUrl" placeholder="Document/Proof Link" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Add Alumni</button>
-                            <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
+                            
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-400 uppercase">Profile Image</label>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex-1 cursor-pointer">
+                                        <div className="w-full py-3 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 hover:bg-gray-100 transition-colors">
+                                            <FileUp className="w-5 h-5 text-gray-400" />
+                                            <span className="text-xs font-semibold text-gray-500">Choose Image</span>
+                                        </div>
+                                        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                                    </label>
+                                    {selectedImage && (
+                                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-200">
+                                            <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Add Alumni</button>
+                            <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500 font-bold text-sm">Cancel</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {editingAlumni && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative my-8 shadow-2xl">
+                        <h3 className="text-2xl font-bold mb-6">Edit Alumni Record</h3>
+                        <form className="space-y-4" onSubmit={handleEditAlumni}>
+                            <EditField label="Full Name" name="name" defaultValue={editingAlumni.name} />
+                            <EditField label="Batch Year" name="batchYear" type="number" defaultValue={editingAlumni.batch_year} />
+                            <EditField label="Contact" name="contactDetails" defaultValue={editingAlumni.contact_details} />
+                            <EditField label="Career Info" name="careerInfo" defaultValue={editingAlumni.career_info} />
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-400 uppercase">Achievements</label>
+                                <textarea name="achievements" defaultValue={editingAlumni.achievements} className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-400 uppercase">Profile Image</label>
+                                <div className="flex items-center gap-4">
+                                    <label className="flex-1 cursor-pointer">
+                                        <div className="w-full py-3 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 hover:bg-gray-100 transition-colors">
+                                            <FileUp className="w-5 h-5 text-gray-400" />
+                                            <span className="text-xs font-semibold text-gray-500">Change Image</span>
+                                        </div>
+                                        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                                    </label>
+                                    {(selectedImage || editingAlumni.image_url) && (
+                                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-200">
+                                            <img src={selectedImage || editingAlumni.image_url} alt="Preview" className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Update Record</button>
+                            <button type="button" onClick={() => setEditingAlumni(null)} className="w-full py-2 text-gray-500 font-bold text-sm">Cancel</button>
                         </form>
                     </div>
                 </div>
@@ -3290,8 +3487,10 @@ function EditField({ label, name, defaultValue, type = 'text', options = [] }: {
 function BookScannerView({ token }: { token: string }) {
     const [scanning, setScanning] = useState(false);
     const [book, setBook] = useState<any>(null);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
     const [error, setError] = useState('');
-    const [isbnInput, setIsbnInput] = useState('');
+    const [queryInput, setQueryInput] = useState('');
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         let scanner: Html5QrcodeScanner | null = null;
@@ -3304,117 +3503,210 @@ function BookScannerView({ token }: { token: string }) {
         };
     }, [scanning]);
 
-    const handleManualLookup = async (manualIsbn?: string) => {
-        const id = manualIsbn || isbnInput;
-        if (!id) return;
+    const handleSearch = async (isIsbn: boolean = false) => {
+        if (!queryInput) return;
         setScanning(false);
+        setLoading(true);
+        setError('');
+        setBook(null);
+        setSearchResults([]);
+
         try {
-            const res = await fetch(`/api/books/isbn/${id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setBook(data);
-                setError('');
+            if (isIsbn || /^\d+$/.test(queryInput)) {
+                // Try ISBN lookup
+                const res = await fetch(`/api/books/isbn/${queryInput}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setBook(data);
+                } else {
+                    // Try general search as fallback
+                    const altRes = await fetch(`/api/books/remote-search?q=${encodeURIComponent(queryInput)}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await altRes.json();
+                    if (data.length > 0) setSearchResults(data);
+                    else setError('No books found for this query');
+                }
             } else {
-                setError('Book not found for this ISBN/QR');
+                // Title/Author Search
+                const res = await fetch(`/api/books/remote-search?q=${encodeURIComponent(queryInput)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (data.length > 0) setSearchResults(data);
+                else setError('No books found');
             }
         } catch (err) {
-            setError('Failed to fetch book details');
+            setError('Failed to retrieve book data');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const onScanSuccess = (decodedText: string) => handleManualLookup(decodedText);
-
-    const onScanError = (err: any) => {
-        // console.warn(err);
+    const handleSelectBookFromList = async (selected: any) => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/books/isbn/${selected.isbn || selected.title}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            setBook(data);
+            setSearchResults([]);
+        } catch (e) {
+            setBook(selected); // Use what we have
+        } finally {
+            setLoading(false);
+        }
     };
 
+    const onScanSuccess = (decodedText: string) => {
+        setQueryInput(decodedText);
+        handleSearch(true);
+    };
+
+    const onScanError = (err: any) => {};
+
     return (
-        <div className="max-w-2xl mx-auto space-y-8">
+        <div className="max-w-2xl mx-auto space-y-8 pb-20">
             <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 text-center">
-                <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                     <QrCode className="w-10 h-10 text-[#7C3AED]" />
                 </div>
-                <h2 className="text-2xl font-bold text-[#1F2937] mb-2">Book Search & Scanner</h2>
-                <p className="text-[#6B7280] mb-8 text-sm px-10">Scan barcode, upload from explorer, or enter ISBN manually.</p>
+                <h2 className="text-2xl font-bold text-[#1F2937] mb-2">Book Explorer</h2>
+                <p className="text-[#6B7280] mb-8 text-sm px-10">Search by title, author, or scan ISBN barcode.</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                     {!scanning ? (
                         <button 
                             onClick={() => setScanning(true)}
-                            className="p-6 bg-[#7C3AED] text-white rounded-3xl font-bold flex flex-col items-center gap-3 hover:bg-[#6D28D9] transition-all"
+                            className="p-6 bg-[#7C3AED] text-white rounded-3xl font-bold flex flex-col items-center gap-3 hover:bg-[#6D28D9] transition-all shadow-lg shadow-purple-100"
                         >
                             <Camera className="w-8 h-8" />
-                            <span>Use Camera</span>
+                            <span>Scan ISBN</span>
                         </button>
                     ) : (
                         <div className="col-span-1 md:col-span-2">
                             <div id="reader" className="overflow-hidden rounded-3xl border-2 border-dashed border-purple-100"></div>
-                            <button onClick={() => setScanning(false)} className="mt-4 text-red-500 font-bold">Stop Camera</button>
+                            <button onClick={() => setScanning(false)} className="mt-4 text-red-500 font-bold hover:underline">Stop Scanner</button>
                         </div>
                     )}
                     
                     <label className="p-6 bg-gray-50 text-[#1F2937] rounded-3xl font-bold flex flex-col items-center gap-3 hover:bg-gray-100 cursor-pointer transition-all border border-gray-100">
                         <FileUp className="w-8 h-8 text-[#7C3AED]" />
-                        <span>File Explorer</span>
+                        <span>Upload QR/Bar</span>
                         <input type="file" className="hidden" onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file) alert("Scanning file for barcodes... Simulated ISBN extraction.");
+                            if (file) alert("Scanning file for barcodes... This feature requires browser barcode detection API.");
                         }} />
                     </label>
                 </div>
 
                 <div className="flex gap-2">
-                    <input 
-                        type="text" 
-                        placeholder="Or enter ISBN manually..." 
-                        value={isbnInput}
-                        onChange={(e) => setIsbnInput(e.target.value)}
-                        className="flex-1 px-6 py-4 bg-gray-50 rounded-2xl border-none outline-none text-sm font-medium"
-                    />
+                    <div className="relative flex-1">
+                        <input 
+                            type="text" 
+                            placeholder="Title, Author, or ISBN..." 
+                            value={queryInput}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            onChange={(e) => setQueryInput(e.target.value)}
+                            className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none outline-none text-sm font-medium pr-12"
+                        />
+                        {loading && <div className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />}
+                    </div>
                     <button 
-                        onClick={() => handleManualLookup()}
-                        className="px-8 py-4 bg-[#1F2937] text-white rounded-2xl font-bold"
+                        onClick={() => handleSearch()}
+                        disabled={loading}
+                        className="px-8 py-4 bg-[#1F2937] text-white rounded-2xl font-bold hover:bg-black transition-colors disabled:bg-gray-300"
                     >
-                        Lookup
+                        Search
                     </button>
                 </div>
             </div>
 
             {error && (
-                <div className="p-6 bg-red-50 rounded-3xl border border-red-100 flex items-center gap-4 text-red-600">
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-red-50 rounded-3xl border border-red-100 flex items-center gap-4 text-red-600">
                     <AlertCircle className="w-6 h-6" />
                     <p className="font-bold">{error}</p>
+                </motion.div>
+            )}
+
+            {searchResults.length > 0 && (
+                <div className="space-y-4">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest px-4">Search Results</h3>
+                    <div className="space-y-3">
+                        {searchResults.map((res, i) => (
+                            <motion.div 
+                                key={i}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: i * 0.05 }}
+                                onClick={() => handleSelectBookFromList(res)}
+                                className="bg-white p-4 rounded-3xl border border-gray-100 flex items-center gap-4 cursor-pointer hover:border-purple-200 hover:shadow-md transition-all group"
+                            >
+                                <div className="w-16 h-20 bg-gray-100 rounded-xl overflow-hidden shrink-0">
+                                    {res.coverImage ? <img src={res.coverImage} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Library className="w-5 h-5 text-gray-300" /></div>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="font-bold text-[#1F2937] truncate group-hover:text-[#7C3AED] transition-colors">{res.title}</h4>
+                                    <p className="text-xs text-gray-400 font-medium">by {res.author}</p>
+                                    <div className="mt-2 text-[10px] font-bold text-gray-400 uppercase">{res.category}</div>
+                                </div>
+                                <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-[#7C3AED] group-hover:translate-x-1 transition-all" />
+                            </motion.div>
+                        ))}
+                    </div>
                 </div>
             )}
 
             {book && (
-                <div className="bg-[#1F2937] p-10 rounded-[40px] text-white relative overflow-hidden">
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#1F2937] p-10 rounded-[40px] text-white relative overflow-hidden shadow-2xl">
+                    <div className="absolute top-0 right-0 p-10 opacity-5">
+                        <Library className="w-64 h-64 -mr-20 -mt-20" />
+                    </div>
+                    
                     <div className="relative z-10">
-                        <div className="px-3 py-1 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full w-fit mb-4 border border-green-500/30 uppercase tracking-widest">
-                            Found ISBN: {book.isbn}
-                        </div>
-                        <h3 className="text-2xl font-bold mb-1">{book.title}</h3>
-                        <p className="text-gray-400 font-medium mb-6">by {book.author}</p>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
-                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Category</p>
-                                <p className="font-bold">{book.category}</p>
+                        <div className="flex flex-col md:flex-row gap-8">
+                            <div className="w-40 h-56 bg-white/10 rounded-2xl overflow-hidden shadow-xl shrink-0">
+                                {book.coverImage ? (
+                                    <img src={book.coverImage} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <BookMarked className="w-12 h-12 text-white/20" />
+                                    </div>
+                                )}
                             </div>
-                            <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
-                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Status</p>
-                                <p className="font-bold capitalize">{book.status}</p>
+                            
+                            <div className="flex-1">
+                                <div className="px-3 py-1 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full w-fit mb-4 border border-green-500/30 uppercase tracking-widest">
+                                    ISBN: {book.isbn || 'N/A'}
+                                </div>
+                                <h3 className="text-3xl font-bold mb-2">{book.title}</h3>
+                                <p className="text-gray-400 font-medium text-lg mb-4 italic">by {book.author}</p>
+                                <p className="text-sm text-gray-300 line-clamp-3 mb-6 bg-white/5 p-4 rounded-2xl italic leading-relaxed">
+                                    {book.description || "The profound wisdom within this volume awaits your intellectual pursuit."}
+                                </p>
+                                
+                                <div className="grid grid-cols-2 gap-4 mb-8">
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Subject Area</p>
+                                        <p className="font-bold text-sm">{book.category || 'Academic'}</p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Library Status</p>
+                                        <p className="font-bold text-sm text-green-400">Available</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex gap-4">
+                                    <button className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-900/20 hover:bg-[#6D28D9] transition-all">Request Issue</button>
+                                    <button onClick={() => setBook(null)} className="px-6 py-4 bg-white/10 text-white rounded-2xl font-bold hover:bg-white/20 transition-all border border-white/10">Dismiss</button>
+                                </div>
                             </div>
-                        </div>
-                        
-                        <div className="mt-8 flex gap-4">
-                            <button className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Issue Book</button>
-                            <button onClick={() => setBook(null)} className="px-6 py-4 bg-white/10 text-white rounded-2xl font-bold">Clear</button>
                         </div>
                     </div>
-                </div>
+                </motion.div>
             )}
         </div>
     );
