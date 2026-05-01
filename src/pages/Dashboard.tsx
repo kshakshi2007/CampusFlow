@@ -1556,10 +1556,14 @@ function LibraryView({ token, user, setActiveTab }: { token: string, user: any, 
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-    useEffect(() => {
+    const fetchBooks = () => {
         fetch('/api/library/books', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(async res => (res.ok ? await safeJson(res) : []) || [])
             .then(setBooks);
+    };
+
+    useEffect(() => {
+        fetchBooks();
         fetch('/api/library/status')
             .then(async res => (res.ok ? await safeJson(res) : { status: 'open' }) || { status: 'open' })
             .then(data => setStatus(data.status));
@@ -1658,28 +1662,39 @@ function LibraryView({ token, user, setActiveTab }: { token: string, user: any, 
                         <button onClick={() => setIsScannerOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
                             <X className="w-6 h-6" />
                         </button>
-                        <BookScannerView token={token} />
+                        <BookScannerView token={token} onSuccess={() => {
+                            fetchBooks();
+                        }} />
                     </div>
                 </div>
             )}
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filtered.map((book, i) => (
-                    <div key={i} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-50">
+                    <div key={book.id || i} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-50 flex flex-col">
                         <div className="flex justify-between items-start mb-4">
-                            <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                                <BookOpen className="text-[#7C3AED] w-6 h-6" />
+                            <div className="w-16 h-24 bg-purple-50 rounded-xl overflow-hidden flex items-center justify-center shadow-inner">
+                                {book.cover_image ? (
+                                    <img src={book.cover_image} alt={book.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                    <BookOpen className="text-[#7C3AED] w-8 h-8" />
+                                )}
                             </div>
                             <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                                 book.availability === 'available' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
                             }`}>
-                                {book.availability.replace('_', ' ')}
+                                {(book.availability || 'available').replace('_', ' ')}
                             </span>
                         </div>
-                        <h3 className="font-bold text-[#1F2937] mb-1">{book.title}</h3>
-                        <p className="text-xs text-[#6B7280] mb-4">By {book.author}</p>
-                        <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-                            <span className="text-[10px] text-[#9CA3AF] font-medium">{book.copies} Copies Available</span>
+                        <h3 className="font-bold text-[#1F2937] mb-1 line-clamp-1">{book.title}</h3>
+                        <p className="text-xs text-[#6B7280] mb-2">By {book.author}</p>
+                        {book.description && (
+                            <p className="text-[10px] text-gray-400 line-clamp-2 mb-4 italic">
+                                {book.description.substring(0, 100)}...
+                            </p>
+                        )}
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-50 mt-auto">
+                            <span className="text-[10px] text-[#9CA3AF] font-medium">{book.copies || 1} Copies Available</span>
                             {(user.role === 'librarian' || user.role === 'admin') && (
                                 <div className="flex gap-4">
                                     <button 
@@ -3265,7 +3280,7 @@ function AlumniView({ token, user }: { token: string, user: any }) {
             body: JSON.stringify({
                 ...payload,
                 imageUrl: selectedImage,
-                batchYear: parseInt(payload.batchYear as string)
+                batchYear: parseInt(payload.batchYear as string) || new Date().getFullYear()
             })
         });
         if (res.ok) {
@@ -3274,6 +3289,9 @@ function AlumniView({ token, user }: { token: string, user: any }) {
             fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(async r => (r.ok ? await safeJson(r) : []) || [])
                 .then(setAlumni);
+        } else {
+            const err = await res.json();
+            alert(err.message || 'Failed to add alumni record');
         }
     };
 
@@ -3288,7 +3306,7 @@ function AlumniView({ token, user }: { token: string, user: any }) {
             body: JSON.stringify({
                 ...payload,
                 imageUrl: selectedImage || editingAlumni.image_url,
-                batchYear: parseInt(payload.batchYear as string)
+                batchYear: parseInt(payload.batchYear as string) || new Date().getFullYear()
             })
         });
         if (res.ok) {
@@ -3297,6 +3315,9 @@ function AlumniView({ token, user }: { token: string, user: any }) {
             fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(async r => (r.ok ? await safeJson(r) : []) || [])
                 .then(setAlumni);
+        } else {
+            const err = await res.json();
+            alert(err.message || 'Failed to update alumni record');
         }
     };
 
@@ -3484,13 +3505,117 @@ function EditField({ label, name, defaultValue, type = 'text', options = [] }: {
     );
 }
 
-function BookScannerView({ token }: { token: string }) {
+function BookScannerView({ token, onSuccess }: { token: string, onSuccess?: () => void }) {
     const [scanning, setScanning] = useState(false);
     const [book, setBook] = useState<any>(null);
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [error, setError] = useState('');
     const [queryInput, setQueryInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showPreview, setShowPreview] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
+
+    const handleAddToLibrary = async () => {
+        if (!book) return;
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch('/api/books', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` 
+                },
+                body: JSON.stringify(book)
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSuccessMessage('Book successfully added to campus library!');
+                if (onSuccess) onSuccess();
+                setTimeout(() => setSuccessMessage(''), 4000);
+            } else {
+                setError(data.message || 'Failed to add book to library');
+            }
+        } catch (e) {
+            setError('Error connecting to server');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadBookPreview = (isbn: string) => {
+        const tryLoad = (attempts = 0) => {
+            const google = (window as any).google;
+            
+            if (!google || !google.books) {
+                if (attempts < 20) {
+                    setTimeout(() => tryLoad(attempts + 1), 500);
+                } else {
+                    console.warn("Google Books API library not found or not yet loaded");
+                }
+                return;
+            }
+
+            const canvas = document.getElementById('viewerCanvas');
+            if (!canvas) {
+                if (attempts < 10) {
+                    setTimeout(() => tryLoad(attempts + 1), 200);
+                }
+                return;
+            }
+
+            const initializeViewer = () => {
+                if (google.books && google.books.DefaultViewer) {
+                    try {
+                        const viewer = new google.books.DefaultViewer(canvas);
+                        viewer.load(`ISBN:${isbn}`, () => {
+                            console.log("Book preview not available for this identifier.");
+                            const msg = document.createElement('div');
+                            msg.className = "text-center p-10 text-gray-400 font-medium font-sans";
+                            msg.innerText = "Preview not available for this edition.";
+                            canvas.innerHTML = '';
+                            canvas.appendChild(msg);
+                        });
+                    } catch (err) {
+                        console.error("Error creating DefaultViewer:", err);
+                    }
+                }
+            };
+
+            try {
+                // The documentation uses google.books.load()
+                if (typeof google.books.load === 'function') {
+                    google.books.load();
+                    google.books.setOnLoadCallback(initializeViewer);
+                } 
+                // Fallback to google.load('books', '1') if the above is missing
+                else if (typeof google.load === 'function') {
+                    google.load('books', '1', { 'callback': initializeViewer });
+                }
+                // If already initialized
+                else if (google.books.DefaultViewer) {
+                    initializeViewer();
+                }
+                else {
+                    if (attempts < 20) {
+                        setTimeout(() => tryLoad(attempts + 1), 500);
+                    } else {
+                        console.warn("Google Books Loader methods (load/google.load) not found after multiple attempts");
+                    }
+                }
+            } catch (e) {
+                console.error("Error in Google Books initialization sequence:", e);
+            }
+        };
+
+        tryLoad();
+    };
+
+    useEffect(() => {
+        if (showPreview && book?.isbn) {
+            loadBookPreview(book.isbn);
+        }
+    }, [showPreview, book?.isbn]);
 
     useEffect(() => {
         let scanner: Html5QrcodeScanner | null = null;
@@ -3632,6 +3757,13 @@ function BookScannerView({ token }: { token: string }) {
                 </motion.div>
             )}
 
+            {successMessage && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-green-50 rounded-3xl border border-green-100 flex items-center gap-4 text-green-600">
+                    <CheckCircle className="w-6 h-6" />
+                    <p className="font-bold">{successMessage}</p>
+                </motion.div>
+            )}
+
             {searchResults.length > 0 && (
                 <div className="space-y-4">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest px-4">Search Results</h3>
@@ -3699,12 +3831,36 @@ function BookScannerView({ token }: { token: string }) {
                                     </div>
                                 </div>
                                 
-                                <div className="flex gap-4">
+                                <div className="flex flex-wrap gap-4">
+                                    <button 
+                                        onClick={handleAddToLibrary}
+                                        disabled={loading}
+                                        className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-bold shadow-lg shadow-green-900/20 hover:bg-green-700 transition-all disabled:opacity-50"
+                                    >
+                                        Add to Library
+                                    </button>
                                     <button className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-900/20 hover:bg-[#6D28D9] transition-all">Request Issue</button>
-                                    <button onClick={() => setBook(null)} className="px-6 py-4 bg-white/10 text-white rounded-2xl font-bold hover:bg-white/20 transition-all border border-white/10">Dismiss</button>
+                                    <button 
+                                        onClick={() => setShowPreview(!showPreview)} 
+                                        className="flex-1 py-4 bg-white/10 text-white rounded-2xl font-bold hover:bg-white/20 transition-all border border-white/10"
+                                    >
+                                        {showPreview ? "Hide Preview" : "View Preview"}
+                                    </button>
+                                    <button onClick={() => { setBook(null); setShowPreview(false); }} className="px-6 py-4 bg-red-500/10 text-red-400 rounded-2xl font-bold hover:bg-red-500/20 transition-all border border-red-500/20">Dismiss</button>
                                 </div>
                             </div>
                         </div>
+
+                        {showPreview && (
+                            <motion.div 
+                                initial={{ opacity: 0, height: 0 }} 
+                                animate={{ opacity: 1, height: 'auto' }} 
+                                className="mt-10 overflow-hidden"
+                            >
+                                <div id="viewerCanvas" style={{ width: '100%', height: '500px' }} className="rounded-2xl overflow-hidden bg-white"></div>
+                                <p className="mt-2 text-xs text-center text-gray-500 font-medium">Preview provided by Google Books Embedded Viewer</p>
+                            </motion.div>
+                        )}
                     </div>
                 </motion.div>
             )}

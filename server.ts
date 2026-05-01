@@ -61,6 +61,12 @@ try {
 try {
     db.prepare("ALTER TABLE events ADD COLUMN created_by INTEGER").run();
 } catch (e) {}
+try {
+    db.prepare("ALTER TABLE books ADD COLUMN cover_image TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE books ADD COLUMN description TEXT").run();
+} catch (e) {}
 
 // Seed initial data if empty or missing librarian
 const librarianExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'librarian'").get() as { count: number };
@@ -88,23 +94,26 @@ if (librarianExists.count === 0) {
         db.prepare("INSERT INTO library_status (status) VALUES (?)").run("open");
     }
     
-    // Create 2 Students if count is low
+    // Create 5 Students if count is low
     const studentCount = db.prepare("SELECT count(*) as count FROM users WHERE role = 'student'").get() as { count: number };
-    if (studentCount.count < 2) {
+    if (studentCount.count < 5) {
         const insertUser = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)");
         const insertStudent = db.prepare("INSERT INTO students (user_id, roll_number, semester, cgpa, fee_status) VALUES (?, ?, ?, ?, ?)");
         
-        for (let i = 1; i <= 2; i++) {
-            const name = `Student ${i}`;
+        for (let i = 1; i <= 5; i++) {
             const email = `student${i}@college.edu`;
+            const userExists = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
+            if (userExists) continue;
+
+            const name = `Student ${i}`;
             const dept = "Computer Science";
             const result = insertUser.run(name, email, hashedPassword, "student", dept);
             const userId = result.lastInsertRowid;
             
             const roll = `CS2026${String(i).padStart(3, '0')}`;
             const semester = 4;
-            const cgpa = "0.00"; 
-            const feeStatus = 'paid';
+            const cgpa = (Math.random() * 4 + 6).toFixed(2); // Random CGPA between 6.0 and 10.0
+            const feeStatus = i % 2 === 0 ? 'pending' : 'paid';
             
             insertStudent.run(userId, roll, semester, cgpa, feeStatus);
 
@@ -112,6 +121,29 @@ if (librarianExists.count === 0) {
             db.prepare("INSERT INTO fees (student_id, amount, due_date, status) VALUES (?, ?, ?, ?)").run(
                 userId, 45000, "2026-06-30", feeStatus
             );
+
+            // Seed some random attendance for each subject
+            const subjects = db.prepare("SELECT id FROM subjects").all() as any[];
+            const today = new Date();
+            for (const sub of subjects) {
+                for (let day = 1; day <= 10; day++) {
+                    const date = new Date();
+                    date.setDate(today.getDate() - day);
+                    const status = Math.random() > 0.15 ? 'present' : 'absent';
+                    db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
+                        userId, sub.id, date.toISOString().split('T')[0], status
+                    );
+                }
+            }
+
+            // Seed some random results
+            for (const sub of subjects) {
+                const marks = Math.floor(Math.random() * 40) + 60; // 60-100
+                const grade = marks >= 90 ? 'S' : marks >= 80 ? 'A' : marks >= 70 ? 'B' : 'C';
+                db.prepare("INSERT INTO results (student_id, semester, subject_id, marks, grade) VALUES (?, ?, ?, ?, ?)").run(
+                    userId, 4, sub.id, marks, grade
+                );
+            }
         }
     }
 
@@ -140,6 +172,20 @@ if (librarianExists.count === 0) {
         db.prepare("INSERT INTO books (title, author, category) VALUES (?, ?, ?)").run(
             "The Pragmatic Programmer", "Andrew Hunt", "Software Engineering"
         );
+    }
+
+    // Seed some alumni if empty
+    const alumniCount = db.prepare("SELECT count(*) as count FROM alumni").get() as { count: number };
+    if (alumniCount.count === 0) {
+        const alumniData = [
+            { name: "John Doe", batch: 2022, contact: "john@example.com", career: "Software Engineer at Google", achievements: "Lead Developer of CampusFlow v1", img: "https://api.dicebear.com/7.x/initials/svg?seed=JD" },
+            { name: "Jane Smith", batch: 2021, contact: "jane@example.com", career: "Product Manager at Microsoft", achievements: "Top Rank in University", img: "https://api.dicebear.com/7.x/initials/svg?seed=JS" },
+            { name: "Robert Wilson", batch: 2020, contact: "robert@example.com", career: "CTO at StartupX", achievements: "Founded the Coding Club", img: "https://api.dicebear.com/7.x/initials/svg?seed=RW" }
+        ];
+        const insertAlumni = db.prepare("INSERT INTO alumni (name, batch_year, contact_details, career_info, achievements, image_url) VALUES (?, ?, ?, ?, ?, ?)");
+        for (const a of alumniData) {
+            insertAlumni.run(a.name, a.batch, a.contact, a.career, a.achievements, a.img);
+        }
     }
 
     // Seed some IA schedules if empty
@@ -209,7 +255,8 @@ async function startServer() {
     const PORT = 3000;
 
     app.use(cors());
-    app.use(express.json());
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
     // Auth Middleware
     const authenticateToken = (req: any, res: any, next: any) => {
@@ -777,19 +824,44 @@ async function startServer() {
     app.post("/api/alumni", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
         const { name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl } = req.body;
-        db.prepare("INSERT INTO alumni (name, batch_year, contact_details, career_info, achievements, image_url, document_url) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-            name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl
-        );
-        res.json({ success: true });
+        
+        try {
+            db.prepare("INSERT INTO alumni (name, batch_year, contact_details, career_info, achievements, image_url, document_url) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+                name || "Unknown",
+                parseInt(batchYear) || new Date().getFullYear(),
+                contactDetails || null,
+                careerInfo || null,
+                achievements || null,
+                imageUrl || null,
+                documentUrl || null
+            );
+            res.json({ success: true });
+        } catch (e) {
+            console.error("Error adding alumni:", e);
+            res.status(500).json({ message: "Error adding alumni record" });
+        }
     });
 
     app.put("/api/alumni/:id", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
         const { name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl } = req.body;
-        db.prepare("UPDATE alumni SET name = ?, batch_year = ?, contact_details = ?, career_info = ?, achievements = ?, image_url = ?, document_url = ? WHERE id = ?").run(
-            name, batchYear, contactDetails, careerInfo, achievements, imageUrl, documentUrl, req.params.id
-        );
-        res.json({ success: true });
+        
+        try {
+            db.prepare("UPDATE alumni SET name = ?, batch_year = ?, contact_details = ?, career_info = ?, achievements = ?, image_url = ?, document_url = ? WHERE id = ?").run(
+                name, 
+                parseInt(batchYear) || new Date().getFullYear(), 
+                contactDetails || null, 
+                careerInfo || null, 
+                achievements || null, 
+                imageUrl || null, 
+                documentUrl || null, 
+                req.params.id
+            );
+            res.json({ success: true });
+        } catch (e) {
+            console.error("Error updating alumni:", e);
+            res.status(500).json({ message: "Error updating alumni record" });
+        }
     });
 
     app.delete("/api/alumni/:id", authenticateToken, (req: any, res) => {
@@ -801,14 +873,16 @@ async function startServer() {
     // Book ISBN Lookup (Proxy to Google Books API)
     app.get("/api/books/isbn/:isbn", async (req, res) => {
         const { isbn } = req.params;
+        const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
         try {
             // Try ISBN search first
-            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+            const baseUrl = "https://www.googleapis.com/books/v1/volumes";
+            const response = await fetch(`${baseUrl}?q=isbn:${isbn}${apiKey ? `&key=${apiKey}` : ""}`);
             let data = await response.json();
             
             // If nothing found by ISBN, try general query with the same string in case it's a generic ID
-            if (data.totalItems === 0) {
-                const altResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${isbn}`);
+            if (!data.items || data.totalItems === 0) {
+                const altResponse = await fetch(`${baseUrl}?q=${isbn}${apiKey ? `&key=${apiKey}` : ""}`);
                 data = await altResponse.json();
             }
 
@@ -830,6 +904,7 @@ async function startServer() {
                 res.status(404).json({ message: "Book not found" });
             }
         } catch (e) {
+            console.error("Google Books Fetch Error:", e);
             res.status(500).json({ message: "Error fetching book details" });
         }
     });
@@ -838,8 +913,9 @@ async function startServer() {
     app.get("/api/books/remote-search", async (req, res) => {
         const { q } = req.query;
         if (!q) return res.status(400).json({ message: "Query is required" });
+        const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
         try {
-            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5`);
+            const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5${apiKey ? `&key=${apiKey}` : ""}`);
             const data = await response.json();
             
             if (data.items && data.items.length > 0) {
@@ -848,14 +924,35 @@ async function startServer() {
                     author: item.volumeInfo.authors ? item.volumeInfo.authors.join(", ") : "Unknown",
                     coverImage: item.volumeInfo.imageLinks ? item.volumeInfo.imageLinks.thumbnail : null,
                     isbn: item.volumeInfo.industryIdentifiers?.find((id: any) => id.type.includes("ISBN"))?.identifier || "",
-                    category: item.volumeInfo.categories ? item.volumeInfo.categories[0] : "General"
+                    category: item.volumeInfo.categories ? item.volumeInfo.categories[0] : "General",
+                    description: item.volumeInfo.description || ""
                 }));
                 res.json(results);
             } else {
                 res.json([]);
             }
         } catch (e) {
+            console.error("Google Books Search Error:", e);
             res.status(500).json({ message: "Error searching books" });
+        }
+    });
+
+    app.post("/api/books", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "librarian" && req.user.role !== "admin") {
+            return res.status(403).json({ message: "Forbidden" });
+        }
+        const { title, author, isbn, category, coverImage, description } = req.body;
+        try {
+            db.prepare(`
+                INSERT INTO books (title, author, isbn, category, cover_image, description)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(title, author, isbn, category, coverImage, description);
+            res.json({ success: true });
+        } catch (e: any) {
+            if (e.message.includes("UNIQUE constraint failed")) {
+                return res.status(400).json({ message: "Book already exists" });
+            }
+            res.status(500).json({ message: "Database error" });
         }
     });
     if (process.env.NODE_ENV !== "production") {
