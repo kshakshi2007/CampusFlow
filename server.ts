@@ -6,10 +6,174 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Database from "better-sqlite3";
 import fs from "fs";
+import { createServer } from "http";
+import { Server } from "socket.io";
 
 const __dirname = path.resolve();
 const db = new Database("campusflow.db");
 const JWT_SECRET = process.env.JWT_SECRET || "campusflow-secret-key";
+
+// VTU Scheme Subjects Data (Refined based on user's curriculum details)
+const vtuScheme: any = {
+    common: {
+        "1": [
+            { code: "BMAT101", name: "Mathematics-I", credits: 4 },
+            { code: "BPS102", name: "Physics / Chemistry", credits: 4 },
+            { code: "BEEE103", name: "Basic Electrical / Electronics", credits: 3 },
+            { code: "BPRO104", name: "Programming (Python/C)", credits: 3 },
+            { code: "BENG105", name: "Engineering Graphics", credits: 2 },
+            { code: "BLAB106", name: "Labs + Workshop", credits: 3 }
+        ],
+        "2": [
+            { code: "BMAT201", name: "Mathematics-II", credits: 4 },
+            { code: "BPS202", name: "Physics / Chemistry (Other)", credits: 4 },
+            { code: "BDS203", name: "Data Structures (Intro)", credits: 3 },
+            { code: "BCPS204", name: "Basic Civil / Mechanical", credits: 3 },
+            { code: "BEVS205", name: "Environmental Studies", credits: 2 },
+            { code: "BLAB206", name: "Labs", credits: 3 }
+        ]
+    },
+    "CSE": {
+        "3": [
+            { code: "BMAT301", name: "Mathematics-III", credits: 4 },
+            { code: "BCS302", name: "Data Structures & Applications", credits: 4 },
+            { code: "BCS303", name: "Digital Design", credits: 3 },
+            { code: "BCS304", name: "Computer Organization", credits: 3 },
+            { code: "BCS305", name: "Discrete Mathematics", credits: 3 },
+            { code: "BLAB306", name: "Labs", credits: 3 }
+        ],
+        "4": [
+            { code: "BMAT401", name: "Mathematics-IV", credits: 4 },
+            { code: "BCS402", name: "Design & Analysis of Algorithms", credits: 4 },
+            { code: "BCS403", name: "Operating Systems", credits: 3 },
+            { code: "BCS404", name: "Microcontrollers", credits: 3 },
+            { code: "BCS405", name: "Database Management Systems", credits: 3 },
+            { code: "BLAB406", name: "Labs", credits: 3 }
+        ],
+        "5": [
+            { code: "BCS501", name: "Computer Networks", credits: 4 },
+            { code: "BCS502", name: "Automata Theory", credits: 3 },
+            { code: "BCS503", name: "Software Engineering", credits: 3 },
+            { code: "BCS504", name: "AI / ML (intro)", credits: 3 },
+            { code: "BCSE505", name: "Elective 1", credits: 3 },
+            { code: "BLAB506", name: "Labs", credits: 3 }
+        ],
+        "6": [
+            { code: "BCS601", name: "Machine Learning / Data Mining", credits: 4 },
+            { code: "BCS602", name: "Compiler Design", credits: 3 },
+            { code: "BCS603", name: "Cloud Computing", credits: 3 },
+            { code: "BCSE604", name: "Elective 2", credits: 3 },
+            { code: "BPRO605", name: "Mini Project", credits: 2 },
+            { code: "BLAB606", name: "Labs", credits: 2 }
+        ],
+        "7": [
+            { code: "BCS701", name: "Big Data / Advanced Topics", credits: 3 },
+            { code: "BCSE702", name: "Elective 3", credits: 3 },
+            { code: "BCSE703", name: "Elective 4", credits: 3 },
+            { code: "BINT704", name: "Internship", credits: 2 },
+            { code: "BPR1705", name: "Project Phase 1", credits: 4 }
+        ],
+        "8": [
+            { code: "BPR2801", name: "Project Phase 2", credits: 8 },
+            { code: "BSEM802", name: "Seminar", credits: 2 },
+            { code: "BMOOC803", name: "Internship / MOOC", credits: 2 }
+        ]
+    },
+    "ISE": {
+        "3": [
+            { code: "BMAT301", name: "Mathematics-III", credits: 4 },
+            { code: "BCS302", name: "Data Structures & Applications", credits: 4 },
+            { code: "BCS303", name: "Digital Design", credits: 3 },
+            { code: "BCS304", name: "Computer Organization", credits: 3 },
+            { code: "BCS305", name: "Discrete Mathematics", credits: 3 },
+            { code: "BLAB306", name: "Labs", credits: 3 }
+        ],
+        "4": [
+            { code: "BMAT401", name: "Mathematics-IV", credits: 4 },
+            { code: "BCS402", name: "Design & Analysis of Algorithms", credits: 4 },
+            { code: "BCS403", name: "Operating Systems", credits: 3 },
+            { code: "BCS404", name: "Microcontrollers", credits: 3 },
+            { code: "BCS405", name: "Database Management Systems", credits: 3 },
+            { code: "BLAB406", name: "Labs", credits: 3 }
+        ],
+        "5": [
+            { code: "BIS501", name: "Computer Networks", credits: 4 },
+            { code: "BIS502", name: "Information Systems", credits: 3 },
+            { code: "BIS503", name: "Software Engineering", credits: 3 },
+            { code: "BIS504", name: "Data Analytics / AI", credits: 3 },
+            { code: "BISE505", name: "Elective 1", credits: 3 },
+            { code: "BLAB506", name: "Labs", credits: 3 }
+        ],
+        "6": [
+            { code: "BIS601", name: "Machine Learning / Data Mining", credits: 4 },
+            { code: "BIS602", name: "Compiler Design", credits: 3 },
+            { code: "BIS603", name: "Cloud Computing", credits: 3 },
+            { code: "BISE604", name: "Elective 2", credits: 3 },
+            { code: "BPRO605", name: "Mini Project", credits: 2 },
+            { code: "BLAB606", name: "Labs", credits: 2 }
+        ],
+        "7": [
+            { code: "BIS701", name: "Big Data / Advanced Topics", credits: 3 },
+            { code: "BISE702", name: "Elective 3", credits: 3 },
+            { code: "BISE703", name: "Elective 4", credits: 3 },
+            { code: "BINT704", name: "Internship", credits: 2 },
+            { code: "BPR1705", name: "Project Phase 1", credits: 4 }
+        ],
+        "8": [
+            { code: "BPR2801", name: "Project Phase 2", credits: 8 },
+            { code: "BSEM802", name: "Seminar", credits: 2 },
+            { code: "BMOOC803", name: "Internship / MOOC", credits: 2 }
+        ]
+    },
+    "ECE": {
+        "3": [
+            { code: "BMAT301", name: "Mathematics-III", credits: 4 },
+            { code: "BEC302", name: "Network Analysis", credits: 4 },
+            { code: "BEC303", name: "Digital System Design", credits: 3 },
+            { code: "BEC304", name: "Electronic Devices", credits: 3 },
+            { code: "BEC305", name: "Signals and Systems", credits: 3 },
+            { code: "BLAB306", name: "Labs", credits: 3 }
+        ],
+        "4": [
+            { code: "BMAT401", name: "Mathematics-IV", credits: 4 },
+            { code: "BEC402", name: "Communication Theory", credits: 4 },
+            { code: "BEC403", name: "Control Systems", credits: 3 },
+            { code: "BEC404", name: "Microcontrollers (ECE)", credits: 3 },
+            { code: "BEC405", name: "Linear Integrated Circuits", credits: 3 },
+            { code: "BLAB406", name: "Labs", credits: 3 }
+        ],
+        "5": [
+            { code: "BEC501", name: "Computer Networks", credits: 4 },
+            { code: "BEC502", name: "Information Systems", credits: 3 },
+            { code: "BEC503", name: "Software Engineering", credits: 3 },
+            { code: "BEC504", name: "Data Analytics / AI", credits: 3 },
+            { code: "BECE505", name: "Elective 1", credits: 3 },
+            { code: "BLAB506", name: "Labs", credits: 3 }
+        ],
+        "6": [
+            { code: "BEC601", name: "Machine Learning / Data Mining", credits: 4 },
+            { code: "BEC602", name: "Compiler Design", credits: 3 },
+            { code: "BEC603", name: "Cloud Computing", credits: 3 },
+            { code: "BECE604", name: "Elective 2", credits: 3 },
+            { code: "BPRO605", name: "Mini Project", credits: 2 },
+            { code: "BLAB606", name: "Labs", credits: 2 }
+        ],
+        "7": [
+            { code: "BEC701", name: "Big Data / Advanced Topics", credits: 3 },
+            { code: "BECE702", name: "Elective 3", credits: 3 },
+            { code: "BECE703", name: "Elective 4", credits: 3 },
+            { code: "BINT704", name: "Internship", credits: 2 },
+            { code: "BPR1705", name: "Project Phase 1", credits: 4 }
+        ],
+        "8": [
+            { code: "BPR2801", name: "Project Phase 2", credits: 8 },
+            { code: "BSEM802", name: "Seminar", credits: 2 },
+            { code: "BMOOC803", name: "Internship / MOOC", credits: 2 }
+        ]
+    }
+};
+
+const gradePoints: any = { "O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5, "F": 0 };
 
 // Initialize Database
 const schema = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
@@ -62,92 +226,128 @@ try {
     db.prepare("ALTER TABLE events ADD COLUMN created_by INTEGER").run();
 } catch (e) {}
 try {
+    db.prepare("ALTER TABLE events ADD COLUMN registration_deadline DATETIME").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE events ADD COLUMN coordinator_id INTEGER").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE events ADD COLUMN is_reported INTEGER DEFAULT 0").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE event_registrations ADD COLUMN student_name TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE event_registrations ADD COLUMN student_usn TEXT").run();
+} catch (e) {}
+try {
     db.prepare("ALTER TABLE books ADD COLUMN cover_image TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN sgpa REAL DEFAULT 0.0").run();
 } catch (e) {}
 try {
     db.prepare("ALTER TABLE books ADD COLUMN description TEXT").run();
 } catch (e) {}
 
+// Migrations for results management
+try {
+    db.prepare("ALTER TABLE subjects ADD COLUMN credits INTEGER DEFAULT 3").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE results ADD COLUMN internal_marks INTEGER DEFAULT 0").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE results ADD COLUMN external_marks INTEGER DEFAULT 0").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE results ADD COLUMN credits_obtained INTEGER DEFAULT 0").run();
+} catch (e) {}
+
 // Seed initial data if empty or missing librarian
 const librarianExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'librarian'").get() as { count: number };
+const adminExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'admin'").get() as { count: number };
+
+const hashedPasswordDefault = bcrypt.hashSync("password123", 10);
+
+// Seed initial data
+if (adminExists.count === 0) {
+    db.prepare("INSERT OR IGNORE INTO users (name, email, password, role) VALUES (?, ?, ?, ?)").run(
+        "Admin User", "admin@college.edu", hashedPasswordDefault, "admin"
+    );
+}
+
 if (librarianExists.count === 0) {
-    const hashedPassword = bcrypt.hashSync("password123", 10);
-    
-    // Create Admin if not exists
     db.prepare("INSERT OR IGNORE INTO users (name, email, password, role) VALUES (?, ?, ?, ?)").run(
-        "Admin User", "admin@college.edu", hashedPassword, "admin"
+        "Mr. Librarian", "librarian@college.edu", hashedPasswordDefault, "librarian"
     );
-    
-    // Create Faculty if not exists
-    db.prepare("INSERT OR IGNORE INTO users (name, email, password, role) VALUES (?, ?, ?, ?)").run(
-        "Dr. Smith", "faculty@college.edu", hashedPassword, "faculty"
-    );
+}
 
-    // Create Librarian
-    db.prepare("INSERT OR IGNORE INTO users (name, email, password, role) VALUES (?, ?, ?, ?)").run(
-        "Mr. Librarian", "librarian@college.edu", hashedPassword, "librarian"
-    );
+// Create Faculty if not exists
+const facultyCountActual = db.prepare("SELECT count(*) as count FROM users WHERE role = 'faculty'").get() as { count: number };
+if (facultyCountActual.count < 5) {
+    const sampleFaculty = [
+        { name: "Dr. Anil Kumar", email: "anil.kumar@college.edu", department: "Computer Science" },
+        { name: "Prof. Sneha Reddy", email: "sneha.reddy@college.edu", department: "Information Science" },
+        { name: "Dr. Rajesh Sharma", email: "rajesh.sharma@college.edu", department: "Mechanical Engineering" },
+        { name: "Prof. Kavya Nair", email: "kavya.nair@college.edu", department: "Electrical Engineering" },
+        { name: "Dr. Vivek Singh", email: "vivek.singh@college.edu", department: "Civil Engineering" },
+        { name: "Prof. Priya Iyer", email: "priya.iyer@college.edu", department: "Electronics and Communication" },
+        { name: "Dr. Arjun Mehta", email: "arjun.mehta@college.edu", department: "Artificial Intelligence" },
+        { name: "Prof. Neha Gupta", email: "neha.gupta@college.edu", department: "Data Science" },
+        { name: "Dr. Rohit Verma", email: "rohit.verma@college.edu", department: "Physics" },
+        { name: "Prof. Shalini Das", email: "shalini.das@college.edu", department: "Mathematics" }
+    ];
 
-    // Seed Library Status if empty
-    const statusCount = db.prepare("SELECT count(*) as count FROM library_status").get() as { count: number };
-    if (statusCount.count === 0) {
-        db.prepare("INSERT INTO library_status (status) VALUES (?)").run("open");
+    for (const f of sampleFaculty) {
+        db.prepare("INSERT OR IGNORE INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)").run(
+            f.name, f.email, hashedPasswordDefault, "faculty", f.department
+        );
     }
     
-    // Create 5 Students if count is low
-    const studentCount = db.prepare("SELECT count(*) as count FROM users WHERE role = 'student'").get() as { count: number };
-    if (studentCount.count < 5) {
-        const insertUser = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)");
-        const insertStudent = db.prepare("INSERT INTO students (user_id, roll_number, semester, cgpa, fee_status) VALUES (?, ?, ?, ?, ?)");
-        
-        for (let i = 1; i <= 5; i++) {
-            const email = `student${i}@college.edu`;
-            const userExists = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
-            if (userExists) continue;
+    // Add Sample Events if few exist
+    const eventsCount = db.prepare("SELECT count(*) as count FROM events").get() as { count: number };
+    if (eventsCount.count < 5) {
+        const sampleEvents = [
+            { title: "Hack-A-Thon 2026", description: "24-hour hackathon focused on solving real-world problems using AI and web technologies.", date: "2026-09-15 09:00:00", registration_deadline: "2026-09-10 23:59:59", category: "technical", coordinator: "Dr. Anil Kumar", venue: "Main Auditorium", organizer: "Coding Club", department: "Computer Science" },
+            { title: "ML Fundamentals Workshop", description: "Workshop on Machine Learning fundamentals and hands-on model building.", date: "2026-10-05 10:00:00", registration_deadline: "2026-10-01 23:59:59", category: "technical", coordinator: "Prof. Neha Gupta", venue: "Lab 204", organizer: "AI Society", department: "Artificial Intelligence" },
+            { title: "Algo-Challenge", description: "Coding contest with algorithmic challenges and real-time leaderboard.", date: "2026-08-25 14:00:00", registration_deadline: "2026-08-20 23:59:59", category: "technical", coordinator: "Prof. Sneha Reddy", venue: "Computer Lab 1", organizer: "Tech Club", department: "Information Science" },
+            { title: "Groove & Move", description: "Dance competition featuring solo and group performances.", date: "2026-09-20 17:00:00", registration_deadline: "2026-09-15 23:59:59", category: "cultural", coordinator: "Prof. Shalini Das", venue: "Open Stage", organizer: "Cultural Committee", department: "Arts" },
+            { title: "Melody Night", description: "Music night with band performances and singing competition.", date: "2026-10-12 18:30:00", registration_deadline: "2026-10-08 23:59:59", category: "cultural", coordinator: "Prof. Priya Iyer", venue: "Auditorium", organizer: "Music Club", department: "Electronics and Communication" },
+            { title: "Stage Craft", description: "Drama and skit competition based on social themes.", date: "2026-11-02 16:00:00", registration_deadline: "2026-10-28 23:59:59", category: "cultural", coordinator: "Dr. Vivek Singh", venue: "Seminar Hall", organizer: "Drama Club", department: "Civil Engineering" },
+            { title: "Campus Fest 2026", description: "Annual college fest featuring technical, cultural, and sports activities.", date: "2026-12-05 09:00:00", registration_deadline: "2026-11-25 23:59:59", category: "college_fest", coordinator: "Dr. Rajesh Sharma", venue: "College Ground", organizer: "Fest Committee", department: "Mechanical Engineering" },
+            { title: "Food Carnival", description: "Food fest with stalls, competitions, and live entertainment.", date: "2026-12-06 11:00:00", registration_deadline: "2026-11-28 23:59:59", category: "college_fest", coordinator: "Prof. Kavya Nair", venue: "Campus Lawn", organizer: "Hospitality Team", department: "Electrical Engineering" },
+            { title: "Celebrity Night", description: "DJ night and celebrity performance as part of annual fest.", date: "2026-12-07 19:00:00", registration_deadline: "2026-11-30 23:59:59", category: "college_fest", coordinator: "Dr. Arjun Mehta", venue: "Main Stage", organizer: "Event Management Team", department: "Data Science" },
+            { title: "Inter-Dept Cricket", description: "Inter-department cricket tournament with knockout format.", date: "2026-09-18 08:30:00", registration_deadline: "2026-09-12 23:59:59", category: "sports", coordinator: "Dr. Rohit Verma", venue: "College Cricket Ground", organizer: "Sports Committee", department: "Physical Education" },
+            { title: "Football League", description: "Football tournament with league and finals.", date: "2026-10-10 15:00:00", registration_deadline: "2026-10-05 23:59:59", category: "sports", coordinator: "Dr. Rajesh Sharma", venue: "Football Field", organizer: "Football Club", department: "Mechanical Engineering" },
+            { title: "Athletics Meet", description: "Athletics meet including 100m, 200m, relay, and long jump events.", date: "2026-11-15 07:30:00", registration_deadline: "2026-11-08 23:59:59", category: "sports", coordinator: "Prof. Kavya Nair", venue: "Athletics Track", organizer: "Sports Council", department: "Electrical Engineering" },
+            { title: "Badminton Open", description: "Badminton singles and doubles competition.", date: "2026-08-28 10:00:00", registration_deadline: "2026-08-22 23:59:59", category: "sports", coordinator: "Prof. Sneha Reddy", venue: "Indoor Stadium", organizer: "Badminton Club", department: "Information Science" },
+            { title: "Basketball Invitational", description: "Basketball tournament with inter-college participation.", date: "2026-12-01 16:00:00", registration_deadline: "2026-11-20 23:59:59", category: "sports", coordinator: "Dr. Anil Kumar", venue: "Basketball Court", organizer: "Sports Committee", department: "Computer Science" }
+        ];
 
-            const name = `Student ${i}`;
-            const dept = "Computer Science";
-            const result = insertUser.run(name, email, hashedPassword, "student", dept);
-            const userId = result.lastInsertRowid;
-            
-            const roll = `CS2026${String(i).padStart(3, '0')}`;
-            const semester = 4;
-            const cgpa = (Math.random() * 4 + 6).toFixed(2); // Random CGPA between 6.0 and 10.0
-            const feeStatus = i % 2 === 0 ? 'pending' : 'paid';
-            
-            insertStudent.run(userId, roll, semester, cgpa, feeStatus);
+        const adminUser = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any;
+        const adminId = adminUser ? adminUser.id : 1;
 
-            // Seed Fees
-            db.prepare("INSERT INTO fees (student_id, amount, due_date, status) VALUES (?, ?, ?, ?)").run(
-                userId, 45000, "2026-06-30", feeStatus
+        for (const e of sampleEvents) {
+            const coordinator = db.prepare("SELECT id FROM users WHERE name = ?").get(e.coordinator) as any;
+            const coordId = coordinator ? coordinator.id : adminId;
+
+            db.prepare(`
+                INSERT INTO events (title, description, date, registration_deadline, category, coordinator_id, venue, organizer, department, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                e.title, e.description, e.date, e.registration_deadline, e.category, coordId, e.venue, e.organizer, e.department, adminId
             );
-
-            // Seed some random attendance for each subject
-            const subjects = db.prepare("SELECT id FROM subjects").all() as any[];
-            const today = new Date();
-            for (const sub of subjects) {
-                for (let day = 1; day <= 10; day++) {
-                    const date = new Date();
-                    date.setDate(today.getDate() - day);
-                    const status = Math.random() > 0.15 ? 'present' : 'absent';
-                    db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
-                        userId, sub.id, date.toISOString().split('T')[0], status
-                    );
-                }
-            }
-
-            // Seed some random results
-            for (const sub of subjects) {
-                const marks = Math.floor(Math.random() * 40) + 60; // 60-100
-                const grade = marks >= 90 ? 'S' : marks >= 80 ? 'A' : marks >= 70 ? 'B' : 'C';
-                db.prepare("INSERT INTO results (student_id, semester, subject_id, marks, grade) VALUES (?, ?, ?, ?, ?)").run(
-                    userId, 4, sub.id, marks, grade
-                );
-            }
         }
     }
-
-    // Seed specified subjects if empty
+    
+    db.prepare("INSERT OR IGNORE INTO users (name, email, password, role) VALUES (?, ?, ?, ?)").run(
+        "Dr. Smith", "faculty@college.edu", hashedPasswordDefault, "faculty"
+    );
+}
+    
+    // Create 10 Requested Students if they don't exist
+// Seed specified subjects if empty
     const subjectsToSeed = [
         { code: "CS401", name: "DBMS", sem: 4 },
         { code: "MA401", name: "Linear Algebra", sem: 4 },
@@ -157,12 +357,204 @@ if (librarianExists.count === 0) {
     ];
     
     // Clear and re-seed to ensure correct subjects for the task
-    db.prepare("DELETE FROM subjects").run();
-    const insertSub = db.prepare("INSERT INTO subjects (code, name, semester, department) VALUES (?, ?, ?, ?)");
-    for (const s of subjectsToSeed) {
-        insertSub.run(s.code, s.name, s.sem, "Computer Science");
-    }
+    db.prepare("PRAGMA foreign_keys = OFF").run();
+    db.prepare("DROP TABLE IF EXISTS subjects").run();
+    db.prepare(`
+        CREATE TABLE subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            semester INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            credits INTEGER DEFAULT 3,
+            teacher_id INTEGER,
+            UNIQUE(code, department)
+        )
+    `).run();
+    
+    const insertSub = db.prepare("INSERT OR IGNORE INTO subjects (code, name, semester, department, credits) VALUES (?, ?, ?, ?, ?)");
+    
+    // Seed branch subjects
+    ["CSE", "ISE", "ECE"].forEach(dept => {
+        // Seed common subjects for each dept in Sem 1 & 2
+        Object.keys(vtuScheme.common).forEach(sem => {
+            vtuScheme.common[sem].forEach((s: any) => {
+                insertSub.run(s.code, s.name, parseInt(sem), dept, s.credits);
+            });
+        });
+        
+        // Seed dept specific subjects
+        Object.keys(vtuScheme[dept] || {}).forEach(sem => {
+            vtuScheme[dept][sem].forEach((s: any) => {
+                insertSub.run(s.code, s.name, parseInt(sem), dept, s.credits);
+            });
+        });
+    });
+    db.prepare("PRAGMA foreign_keys = ON").run();
 
+const requestedStudents = [
+    { name: "Aarav Mehta", email: "student1@college.edu", roll: "CS2026001", sem: 1, dept: "CSE" },
+    { name: "Diya Kapoor", email: "student2@college.edu", roll: "IS2026001", sem: 2, dept: "ISE" },
+    { name: "Rohan Iyer", email: "student3@college.edu", roll: "EC2026001", sem: 3, dept: "ECE" },
+    { name: "Meera Joshi", email: "student4@college.edu", roll: "CS2026002", sem: 4, dept: "CSE" },
+    { name: "Kunal Singh", email: "student5@college.edu", roll: "IS2026002", sem: 5, dept: "ISE" },
+    { name: "Ananya Shetty", email: "student6@college.edu", roll: "EC2026002", sem: 6, dept: "ECE" },
+    { name: "Vivaan Sharma", email: "student7@college.edu", roll: "CS2026003", sem: 7, dept: "CSE" },
+    { name: "Siya Gupta", email: "student8@college.edu", roll: "IS2026004", sem: 8, dept: "ISE" },
+];
+
+    for (const s of requestedStudents) {
+        let user = db.prepare("SELECT id FROM users WHERE email = ?").get(s.email) as { id: number };
+        if (!user) {
+            const pass = bcrypt.hashSync("pass123", 10);
+            const userResult = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)").run(
+                s.name, s.email, pass, "student", s.dept
+            );
+            user = { id: Number(userResult.lastInsertRowid) };
+            console.log(`[Seeding] Created user: ${s.name} (${s.email})`);
+        } else {
+            db.prepare("UPDATE users SET department = ? WHERE id = ?").run(s.dept, user.id);
+        }
+        
+        let studentRecord = db.prepare("SELECT id FROM students WHERE user_id = ?").get(user.id) as any;
+        if (!studentRecord) {
+            const res = db.prepare("INSERT INTO students (user_id, roll_number, semester, cgpa, fee_status) VALUES (?, ?, ?, ?, ?)").run(
+                user.id, s.roll, s.sem, 0, "paid"
+            );
+            studentRecord = { id: Number(res.lastInsertRowid) };
+            console.log(`[Seeding] Created student record for: ${s.name} (Roll: ${s.roll})`);
+        } else {
+            db.prepare("UPDATE students SET roll_number = ?, semester = ? WHERE id = ?").run(s.roll, s.sem, studentRecord.id);
+        }
+
+        // Clear and re-seed results history for the demo
+        db.prepare("DELETE FROM results WHERE student_id = ?").run(studentRecord.id);
+        
+        const currentSem = s.sem;
+        let totalOverallWeightedSum = 0;
+        let totalOverallCredits = 0;
+        let currentSemWeightedSum = 0;
+        let currentSemCredits = 0;
+
+        for (let sem = 1; sem <= currentSem; sem++) {
+            const branch = ["1", "2"].includes(sem.toString()) ? "common" : s.dept;
+            const subs = vtuScheme[branch]?.[sem.toString()] || [];
+            
+            for (const sub of subs) {
+                const dbSub = db.prepare("SELECT id, credits FROM subjects WHERE code = ? AND department = ?").get(sub.code, s.dept) as any;
+                if (dbSub) {
+                    const internal = 35 + Math.floor(Math.random() * 15);
+                    const external = 25 + Math.floor(Math.random() * 25);
+                    const total = internal + external;
+                    
+                    let grade = "F";
+                    if (total >= 90) grade = "O";
+                    else if (total >= 80) grade = "A+";
+                    else if (total >= 70) grade = "A";
+                    else if (total >= 60) grade = "B+";
+                    else if (total >= 55) grade = "B";
+                    else if (total >= 50) grade = "C";
+                    
+                    const credsObtained = grade === "F" ? 0 : dbSub.credits;
+                    const points = gradePoints[grade] || 0;
+                    const subCredits = dbSub.credits || 3;
+
+                    totalOverallWeightedSum += (subCredits * points);
+                    totalOverallCredits += subCredits;
+
+                    if (sem === currentSem) {
+                        currentSemWeightedSum += (subCredits * points);
+                        currentSemCredits += subCredits;
+                    }
+                    
+                    db.prepare(`
+                        INSERT INTO results (student_id, semester, subject_id, internal_marks, external_marks, marks, grade, credits_obtained)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    `).run(studentRecord.id, sem, dbSub.id, internal, external, total, grade, credsObtained);
+                }
+            }
+        }
+        const finalCgpa = totalOverallCredits > 0 ? (totalOverallWeightedSum / totalOverallCredits).toFixed(2) : "0.00";
+        const finalSgpa = currentSemCredits > 0 ? (currentSemWeightedSum / currentSemCredits).toFixed(2) : "0.00";
+        db.prepare("UPDATE students SET cgpa = ?, sgpa = ? WHERE id = ?").run(finalCgpa, finalSgpa, studentRecord.id);
+
+        console.log(`[Seeding] Refreshed results history and GPA for: ${s.name} (CGPA: ${finalCgpa}, SGPA: ${finalSgpa})`);
+
+        // Seed some fees if none exist for this student
+        const feeCount = db.prepare("SELECT count(*) as count FROM fees WHERE student_id = ?").get(studentRecord.id) as { count: number };
+        if (feeCount.count === 0) {
+            db.prepare("INSERT INTO fees (student_id, amount, due_date, status) VALUES (?, ?, ?, ?)").run(
+                studentRecord.id,
+                45000 + (Math.random() * 20000),
+                "2026-06-15",
+                Math.random() > 0.5 ? "paid" : "pending"
+            );
+            console.log(`[Seeding] Created fee record for: ${s.name}`);
+        }
+
+        // Seed some attendance if none exists
+        const attCount = db.prepare("SELECT count(*) as count FROM attendance WHERE student_id = ?").get(studentRecord.id) as { count: number };
+        if (attCount.count === 0) {
+            const subs = db.prepare("SELECT id FROM subjects WHERE department = ? AND semester = ?").all(s.dept, s.sem);
+            for (const sub of subs) {
+                // Add 10-15 attendance records
+                const count = 10 + Math.floor(Math.random() * 5);
+                for (let i = 0; i < count; i++) {
+                    const status = Math.random() > 0.2 ? 'present' : 'absent';
+                    const date = new Date();
+                    date.setDate(date.getDate() - i);
+                    db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
+                        studentRecord.id, (sub as any).id, date.toISOString().split('T')[0], status
+                    );
+                }
+            }
+            console.log(`[Seeding] Created attendance records for: ${s.name}`);
+        }
+    }
+console.log("[Seeding] Completed requested students check.");
+
+// Background Deadline Worker (Simulates email/reports)
+setInterval(() => {
+    try {
+        const now = new Date().toISOString();
+        const pendingEvents = db.prepare(`
+            SELECT e.id, e.title, e.coordinator_id, e.created_by, u.name as coordinator_name, u.email as coordinator_email
+            FROM events e
+            LEFT JOIN users u ON e.coordinator_id = u.id
+            WHERE e.registration_deadline < ? AND e.is_reported = 0
+        `).all(now) as any[];
+
+        for (const event of pendingEvents) {
+            const registrations = db.prepare(`
+                SELECT student_name, student_usn 
+                FROM event_registrations 
+                WHERE event_id = ?
+            `).all(event.id) as any[];
+
+            const recipientId = event.coordinator_id || event.created_by;
+            if (recipientId) {
+                const count = registrations.length;
+                const studentList = registrations.map(r => `${r.student_name} (${r.student_usn})`).join(", ");
+                const message = `Registration report for "${event.title}": Total ${count} students registered. Students: ${studentList}`;
+                
+                // Add to internal notifications
+                db.prepare("INSERT INTO notifications (title, message, type, user_id) VALUES (?, ?, ?, ?)")
+                    .run("Registration Deadline Reached", message, "event", recipientId);
+                
+                console.log(`[Deadline Worker] Notified ${event.coordinator_name || 'Creator'} about event ${event.title}`);
+            }
+
+            db.prepare("UPDATE events SET is_reported = 1 WHERE id = ?").run(event.id);
+        }
+    } catch (err) {
+        console.error("Error in Deadline Worker:", err);
+    }
+}, 60000); // Check every minute
+// Library Status
+const statusCount = db.prepare("SELECT count(*) as count FROM library_status").get() as { count: number };
+if (statusCount.count === 0) {
+    db.prepare("INSERT INTO library_status (status) VALUES (?)").run("open");
+}
     // Seed some books if empty
     const bookCount = db.prepare("SELECT count(*) as count FROM books").get() as { count: number };
     if (bookCount.count === 0) {
@@ -215,7 +607,73 @@ if (librarianExists.count === 0) {
             }
         }
     }
-}
+
+    // Seed Rooms if empty
+    const roomCount = db.prepare("SELECT count(*) as count FROM rooms").get() as { count: number };
+    if (roomCount.count === 0) {
+        const rooms = [
+            { name: "LH-101", type: "classroom", capacity: 60 },
+            { name: "LH-102", type: "classroom", capacity: 60 },
+            { name: "LH-103", type: "classroom", capacity: 60 },
+            { name: "LH-201", type: "classroom", capacity: 60 },
+            { name: "LH-202", type: "classroom", capacity: 60 },
+            { name: "DS-LAB-1", type: "lab", capacity: 30 },
+            { name: "DS-LAB-2", type: "lab", capacity: 30 },
+            { name: "EC-LAB-1", type: "lab", capacity: 30 },
+            { name: "ME-LAB-1", type: "lab", capacity: 30 },
+            { name: "Seminar-1", type: "classroom", capacity: 100 }
+        ];
+        const insertRoom = db.prepare("INSERT INTO rooms (room_name, type, capacity) VALUES (?, ?, ?)");
+        for (const r of rooms) {
+            insertRoom.run(r.name, r.type, r.capacity);
+        }
+    }
+
+    // Seed Time Slots if empty
+    const slotCount = db.prepare("SELECT count(*) as count FROM time_slots").get() as { count: number };
+    if (slotCount.count === 0) {
+        const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+        const slots = [
+            { start: "09:00", end: "10:00", num: 1 },
+            { start: "10:00", end: "11:00", num: 2 },
+            { start: "11:15", end: "12:15", num: 3 },
+            { start: "12:15", end: "01:15", num: 4 },
+            { start: "02:00", end: "03:00", num: 5 },
+            { start: "03:00", end: "04:00", num: 6 },
+            { start: "04:00", end: "05:00", num: 7 }
+        ];
+        const insertSlot = db.prepare("INSERT INTO time_slots (day, start_time, end_time, period_number) VALUES (?, ?, ?, ?)");
+        for (const day of days) {
+            for (const slot of slots) {
+                insertSlot.run(day, slot.start, slot.end, slot.num);
+            }
+        }
+    }
+
+    // Seed Study Materials if empty
+    const materialsCount = db.prepare("SELECT count(*) as count FROM materials").get() as { count: number };
+    if (materialsCount.count === 0) {
+        const adminId = (db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any)?.id || 1;
+        const dbmsSub = db.prepare("SELECT id FROM subjects WHERE name = 'DBMS' LIMIT 1").get() as any;
+        const algoSub = db.prepare("SELECT id FROM subjects WHERE name LIKE '%Algorithm%' LIMIT 1").get() as any;
+        const javaSub = db.prepare("SELECT id FROM subjects WHERE name = 'Java' LIMIT 1").get() as any;
+        const networksSub = db.prepare("SELECT id FROM subjects WHERE name LIKE '%Networks%' LIMIT 1").get() as any;
+
+        const sampleMaterials = [
+            { title: "DSATM DBMS Model Paper 2024", type: "model_paper", subjectId: dbmsSub?.id, semester: 4, url: "https://www.google.com/search?q=DSATM+DBMS+Model+Paper" },
+            { title: "DSATM Analysis of Algorithms Model Paper", type: "model_paper", subjectId: algoSub?.id, semester: 4, url: "https://www.google.com/search?q=DSATM+Algorithms+Model+Paper" },
+            { title: "Java Programming Question Bank DSATM", type: "question_bank", subjectId: javaSub?.id, semester: 4, url: "https://www.google.com/search?q=DSATM+Java+Question+Bank" },
+            { title: "Computer Networks Previous Year Paper", type: "pyq", subjectId: networksSub?.id, semester: 5, url: "https://www.google.com/search?q=DSATM+CN+PYQ" }
+        ];
+
+        const insertMaterial = db.prepare("INSERT INTO materials (title, type, subject_id, semester, url, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)");
+        for (const m of sampleMaterials) {
+            if (m.subjectId) {
+                insertMaterial.run(m.title, m.type, m.subjectId, m.semester, m.url, adminId);
+            }
+        }
+        console.log("[Seeding] Added sample DSATM study materials.");
+    }
 
 // IA Notification Logic for Faculty
 function checkIANotifications() {
@@ -252,6 +710,27 @@ function checkIANotifications() {
 
 async function startServer() {
     const app = express();
+    const httpServer = createServer(app);
+    const io = new Server(httpServer, {
+        cors: {
+            origin: "*",
+            methods: ["GET", "POST"]
+        }
+    });
+
+    io.on("connection", (socket) => {
+        console.log("A user connected:", socket.id);
+
+        socket.on("join", (room) => {
+            socket.join(room);
+            console.log(`User ${socket.id} joined room: ${room}`);
+        });
+
+        socket.on("disconnect", () => {
+            console.log("User disconnected:", socket.id);
+        });
+    });
+
     const PORT = 3000;
 
     app.use(cors());
@@ -272,6 +751,25 @@ async function startServer() {
     };
 
     // --- API ROUTES ---
+
+    // Users (for faculty selection)
+    app.get("/api/users", authenticateToken, (req, res) => {
+        const { role } = req.query;
+        try {
+            let query = "SELECT id, name, email, role, department FROM users";
+            let params: any[] = [];
+            
+            if (role) {
+                query += " WHERE role = ?";
+                params.push(role);
+            }
+            
+            const users = db.prepare(query).all(...params);
+            res.json(users);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch users" });
+        }
+    });
 
     // Auth
     app.post("/api/auth/login", (req, res) => {
@@ -321,6 +819,106 @@ async function startServer() {
         res.json({ student, attendance, fees, notifications });
     });
 
+    app.get("/api/student/results", authenticateToken, (req: any, res) => {
+        const student = db.prepare(`
+            SELECT s.id, s.semester, u.department 
+            FROM students s 
+            JOIN users u ON s.user_id = u.id 
+            WHERE u.id = ?
+        `).get(req.user.id) as any;
+
+        if (!student) return res.status(404).json({ message: "Student record not found" });
+
+        const results = db.prepare(`
+            SELECT r.semester, r.marks, r.grade, r.internal_marks, r.external_marks, r.credits_obtained,
+                   sub.name as subject_name, sub.code as subject_code, sub.credits as totalCredits
+            FROM results r
+            JOIN subjects sub ON r.subject_id = sub.id
+            WHERE r.student_id = ?
+        `).all(student.id) as any[];
+
+        const semesterHistory: any = {};
+        
+        results.forEach(r => {
+            if (!semesterHistory[r.semester]) {
+                semesterHistory[r.semester] = { subjects: [], totalCredits: 0, weightedSum: 0 };
+            }
+            const credits = r.totalCredits || 3;
+            const points = gradePoints[r.grade] || 0;
+            
+            semesterHistory[r.semester].subjects.push({
+                name: r.subject_name,
+                code: r.subject_code,
+                grade: r.grade,
+                internalMarks: r.internal_marks,
+                externalMarks: r.external_marks,
+                totalMarks: r.marks,
+                creditsObtained: r.credits_obtained,
+                points,
+                totalCredits: credits
+            });
+            semesterHistory[r.semester].totalCredits += credits;
+            semesterHistory[r.semester].weightedSum += (credits * points);
+        });
+
+        let totalOverallWeightedSum = 0;
+        let totalOverallCredits = 0;
+        
+        const performance = Object.keys(semesterHistory).map(semKey => {
+            const sem = semesterHistory[semKey];
+            const sgpa = sem.totalCredits > 0 ? (sem.weightedSum / sem.totalCredits).toFixed(2) : "0.00";
+            
+            totalOverallWeightedSum += sem.weightedSum;
+            totalOverallCredits += sem.totalCredits;
+            
+            return {
+                semester: semKey,
+                sgpa: parseFloat(sgpa),
+                totalCredits: sem.totalCredits,
+                subjects: sem.subjects
+            };
+        }).sort((a, b) => parseInt(a.semester) - parseInt(b.semester));
+
+        const cgpa = totalOverallCredits > 0 ? (totalOverallWeightedSum / totalOverallCredits).toFixed(2) : "0.00";
+
+        res.json({
+            cgpa: parseFloat(cgpa),
+            performance,
+            department: student.department,
+            currentSemester: student.semester
+        });
+    });
+
+    app.get("/api/academic/courses", authenticateToken, (req: any, res) => {
+        const student = db.prepare(`
+            SELECT s.semester, u.department 
+            FROM students s 
+            JOIN users u ON s.user_id = u.id 
+            WHERE u.id = ?
+        `).get(req.user.id) as any;
+
+        if (!student) return res.status(404).json({ message: "Student record not found" });
+
+        const sem = student.semester.toString();
+        const branch = student.department;
+
+        let courses = [];
+        if (["1", "2"].includes(sem)) {
+            courses = vtuScheme.common[sem] || [];
+        } else if (branch && vtuScheme[branch]) {
+            courses = vtuScheme[branch][sem] || [];
+        } else {
+            // Default: if branch not found (like ECE), show some placeholder or common ones if available
+            courses = [];
+        }
+
+        res.json({
+            branch,
+            semester: student.semester,
+            courses
+        });
+    });
+
     // Student Profile
     app.get("/api/student/profile", authenticateToken, (req: any, res) => {
         const student = db.prepare(`
@@ -357,9 +955,71 @@ async function startServer() {
     });
 
     // Subjects
-    app.get("/api/subjects", authenticateToken, (req, res) => {
-        const subjects = db.prepare("SELECT * FROM subjects").all();
-        res.json(subjects);
+    app.get("/api/subjects", authenticateToken, (req: any, res) => {
+        const { semester, department } = req.query;
+        try {
+            let query = `
+                SELECT s.*, u.name as teacher_name 
+                FROM subjects s 
+                LEFT JOIN users u ON s.teacher_id = u.id
+            `;
+            let params: any[] = [];
+            let conditions: string[] = [];
+
+            if (req.user.role === 'faculty') {
+                conditions.push("s.teacher_id = ?");
+                params.push(req.user.id);
+            }
+            
+            let normalizedDept = department;
+            if (department) {
+                const deptStr = String(department).toLowerCase();
+                if (deptStr.includes("computer") || deptStr.includes("cse")) normalizedDept = "CSE";
+                else if (deptStr.includes("information") || deptStr.includes("ise")) normalizedDept = "ISE";
+                else if (deptStr.includes("electronics") || deptStr.includes("ece")) normalizedDept = "ECE";
+            }
+
+            if (semester) {
+                conditions.push("s.semester = ?");
+                params.push(semester);
+            }
+            if (normalizedDept) {
+                conditions.push("s.department = ?");
+                params.push(normalizedDept);
+            }
+
+            if (conditions.length > 0) {
+                query += " WHERE " + conditions.join(" AND ");
+            }
+            
+            const subjects = db.prepare(query).all(...params);
+            res.json(subjects);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch subjects" });
+        }
+    });
+
+    app.get("/api/results/student/:studentId/semester/:semester", authenticateToken, (req, res) => {
+        const { studentId, semester } = req.params;
+        try {
+            const results = db.prepare(`
+                SELECT r.*, s.name as subject_name, s.code as subject_code
+                FROM results r
+                JOIN subjects s ON r.subject_id = s.id
+                WHERE r.student_id = ? AND r.semester = ?
+            `).all(studentId, semester);
+            res.json(results);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch results" });
+        }
+    });
+
+    // Admin: Set Subject Teacher
+    app.post("/api/admin/subjects/teacher", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { subjectId, teacherId } = req.body;
+        db.prepare("UPDATE subjects SET teacher_id = ? WHERE id = ?").run(teacherId, subjectId);
+        res.json({ success: true });
     });
 
     // Attendance Stats for Graph
@@ -380,7 +1040,7 @@ async function startServer() {
     });
     app.get("/api/materials", authenticateToken, (req, res) => {
         const materials = db.prepare(`
-            SELECT m.*, s.name as subject_name, u.name as uploader_name
+            SELECT m.*, s.name as subject_name, s.department, u.name as uploader_name
             FROM materials m 
             JOIN subjects s ON m.subject_id = s.id
             JOIN users u ON m.uploaded_by = u.id
@@ -403,28 +1063,57 @@ async function startServer() {
 
     // Events
     app.get("/api/events", authenticateToken, (req, res) => {
-        const events = db.prepare("SELECT * FROM events ORDER BY date ASC").all();
+        const events = db.prepare(`
+            SELECT e.*, u.name as coordinator_name 
+            FROM events e 
+            LEFT JOIN users u ON e.coordinator_id = u.id 
+            ORDER BY date ASC
+        `).all();
         res.json(events);
     });
 
     app.post("/api/events/register", authenticateToken, (req: any, res) => {
-        const { eventId } = req.body;
+        const { eventId, name, usn } = req.body;
+        
+        // Check deadline
+        const event = db.prepare("SELECT registration_deadline FROM events WHERE id = ?").get(eventId) as any;
+        if (!event) return res.status(404).json({ message: "Event not found" });
+        
+        if (event.registration_deadline && new Date() > new Date(event.registration_deadline)) {
+            return res.status(400).json({ message: "Registration deadline has passed" });
+        }
+
         const student = db.prepare("SELECT id FROM students WHERE user_id = ?").get(req.user.id) as any;
         if (!student) return res.status(400).json({ message: "Student record not found" });
 
         try {
-            db.prepare("INSERT INTO event_registrations (event_id, student_id) VALUES (?, ?)").run(eventId, student.id);
+            db.prepare("INSERT INTO event_registrations (event_id, student_id, student_name, student_usn) VALUES (?, ?, ?, ?)").run(
+                eventId, student.id, name || req.user.name, usn
+            );
             res.json({ success: true });
         } catch (e) {
             res.status(400).json({ message: "Already registered or error" });
         }
     });
 
-    // Admin: Get registered students for an event
+    // Admin/Faculty: Get registered students for an event
     app.get("/api/events/:id/registrations", authenticateToken, (req: any, res) => {
-        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        
+        const event = db.prepare("SELECT * FROM events WHERE id = ?").get(req.params.id) as any;
+        if (!event) return res.status(404).json({ message: "Event not found" });
+
+        // If faculty, check if they are the coordinator or created it
+        if (req.user.role === "faculty" && event.coordinator_id !== req.user.id && event.created_by !== req.user.id) {
+            // Optional: return forbidden or allow viewing if it's in their department. 
+            // For now, let's allow faculty to see all registrations in their department or where they are assigned.
+            if (event.department !== req.user.department) {
+                return res.status(403).json({ message: "Forbidden: Not your assigned event or department" });
+            }
+        }
+
         const registrations = db.prepare(`
-            SELECT u.name, s.roll_number, u.email
+            SELECT er.*, u.email, s.roll_number as db_usn, u.name as db_name
             FROM event_registrations er
             JOIN students s ON er.student_id = s.id
             JOIN users u ON s.user_id = u.id
@@ -458,29 +1147,423 @@ async function startServer() {
         res.json({ success: true });
     });
 
+    // --- Timetable Management ---
+
+    // Get Rooms
+    app.get("/api/timetable/rooms", authenticateToken, (req, res) => {
+        try {
+            const rooms = db.prepare("SELECT * FROM rooms").all();
+            res.json(rooms);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch rooms" });
+        }
+    });
+
+    // Get Time Slots
+    app.get("/api/timetable/slots", authenticateToken, (req, res) => {
+        try {
+            const slots = db.prepare("SELECT * FROM time_slots ORDER BY period_number").all();
+            res.json(slots);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch slots" });
+        }
+    });
+
+    // Get Timetables list
+    app.get("/api/admin/timetables", authenticateToken, (req, res) => {
+        try {
+            const timetables = db.prepare("SELECT * FROM timetables ORDER BY department, semester").all();
+            res.json(timetables);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch timetables" });
+        }
+    });
+
+    // Create Timetable Definition
+    app.post("/api/admin/timetable", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { department, semester, section, academicYear } = req.body;
+        try {
+            // Check if already exists
+            const existing = db.prepare("SELECT id FROM timetables WHERE department = ? AND semester = ? AND section = ?").get(department, semester, section) as any;
+            if (existing) {
+                return res.status(400).json({ message: "Timetable already exists for this class", id: existing.id });
+            }
+
+            const result = db.prepare(`
+                INSERT INTO timetables (department, semester, section, academic_year)
+                VALUES (?, ?, ?, ?)
+            `).run(department, semester, section, academicYear);
+            res.json({ id: result.lastInsertRowid });
+        } catch (e) {
+            res.status(500).json({ message: "Failed to create timetable" });
+        }
+    });
+
+    // Get Timetable Entries
+    app.get("/api/timetable", authenticateToken, (req: any, res) => {
+        const { timetableId, department, semester, section, facultyId, studentId } = req.query;
+        try {
+            let query = `
+                SELECT 
+                    te.*, 
+                    s.name as subject_name, s.code as subject_code,
+                    r.room_name, r.type as room_type,
+                    u.name as faculty_name,
+                    ts.day, ts.start_time, ts.end_time, ts.period_number,
+                    t.department, t.semester, t.section
+                FROM timetable_entries te
+                JOIN subjects s ON te.subject_id = s.id
+                JOIN rooms r ON te.room_id = r.id
+                JOIN users u ON te.faculty_id = u.id
+                JOIN time_slots ts ON te.time_slot_id = ts.id
+                JOIN timetables t ON te.timetable_id = t.id
+            `;
+            let params: any[] = [];
+            let conditions = [];
+
+            if (timetableId) {
+                conditions.push("te.timetable_id = ?");
+                params.push(timetableId);
+            } else if (facultyId) {
+                conditions.push("te.faculty_id = ?");
+                params.push(facultyId);
+            } else if (studentId) {
+                const student = db.prepare("SELECT semester, department FROM students WHERE user_id = ?").get(studentId) as any;
+                if (student) {
+                    conditions.push("t.semester = ? AND t.department = ?");
+                    params.push(student.semester, student.department);
+                } else {
+                    return res.json([]); // No student info found
+                }
+            } else {
+                if (department) {
+                    conditions.push("t.department = ?");
+                    params.push(department);
+                }
+                if (semester) {
+                    conditions.push("t.semester = ?");
+                    params.push(semester);
+                }
+                if (section) {
+                    conditions.push("t.section = ?");
+                    params.push(section);
+                }
+            }
+
+            if (conditions.length > 0) {
+                query += " WHERE " + conditions.join(" AND ");
+            }
+
+            const entries = db.prepare(query).all(...params);
+            res.json(entries);
+        } catch (e) {
+            console.error(e);
+            res.status(500).json({ message: "Failed to fetch timetable" });
+        }
+    });
+
+    // Create/Update Timetable Entry (Manual)
+    app.post("/api/admin/timetable/entry", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { timetableId, subjectId, facultyId, roomId, timeSlotId } = req.body;
+
+        if (!timetableId || !subjectId || !facultyId || !roomId || !timeSlotId) {
+            return res.status(400).json({ message: "All fields are required" });
+        }
+
+        try {
+            // Check for conflicts first
+            const facultyConflict = db.prepare(`
+                SELECT t.department, t.semester, ts.day, ts.period_number 
+                FROM timetable_entries te
+                JOIN time_slots ts ON te.time_slot_id = ts.id
+                JOIN timetables t ON te.timetable_id = t.id
+                WHERE te.faculty_id = ? AND te.time_slot_id = ? AND te.timetable_id != ?
+            `).get(facultyId, timeSlotId, timetableId) as any;
+            if (facultyConflict) return res.status(400).json({ message: `Faculty is already assigned to ${facultyConflict.department} Sem ${facultyConflict.semester} in this slot` });
+
+            const roomConflict = db.prepare(`
+                SELECT t.department, t.semester, ts.day, ts.period_number 
+                FROM timetable_entries te
+                JOIN time_slots ts ON te.time_slot_id = ts.id
+                JOIN timetables t ON te.timetable_id = t.id
+                WHERE te.room_id = ? AND te.time_slot_id = ? AND te.timetable_id != ?
+            `).get(roomId, timeSlotId, timetableId) as any;
+            if (roomConflict) return res.status(400).json({ message: "Room is already occupied in this slot" });
+
+            db.prepare("DELETE FROM timetable_entries WHERE timetable_id = ? AND time_slot_id = ?").run(timetableId, timeSlotId);
+
+            db.prepare(`
+                INSERT INTO timetable_entries (timetable_id, subject_id, faculty_id, room_id, time_slot_id)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(timetableId, subjectId, facultyId, roomId, timeSlotId);
+            
+            const tt = db.prepare("SELECT department, semester, section FROM timetables WHERE id = ?").get(timetableId) as any;
+            if (tt) {
+                io.emit("timetableChanged", { department: tt.department, semester: tt.semester, section: tt.section });
+            }
+
+            res.json({ message: "Entry updated successfully" });
+        } catch (e) {
+            console.error(e);
+            res.status(500).json({ message: "Failed to update timetable entry" });
+        }
+    });
+
+    // Delete Timetable
+    app.delete("/api/admin/timetable/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { id } = req.params;
+        try {
+            db.transaction(() => {
+                db.prepare("DELETE FROM timetable_entries WHERE timetable_id = ?").run(id);
+                db.prepare("DELETE FROM timetables WHERE id = ?").run(id);
+            })();
+            io.emit("timetableChanged", { all: true });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ message: "Failed to delete timetable" });
+        }
+    });
+
+    // Delete Timetable Entry
+    app.delete("/api/admin/timetable/entry/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { id } = req.params;
+        try {
+            const entry = db.prepare("SELECT t.department, t.semester, t.section FROM timetable_entries te JOIN timetables t ON te.timetable_id = t.id WHERE te.id = ?").get(id) as any;
+            db.prepare("DELETE FROM timetable_entries WHERE id = ?").run(id);
+            if (entry) {
+                io.emit("timetableChanged", { department: entry.department, semester: entry.semester, section: entry.section });
+            }
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ message: "Failed to delete entry" });
+        }
+    });
+
+    // Auto-generate Timetable
+    app.post("/api/admin/timetable/generate", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { timetableId } = req.body;
+
+        try {
+            const timetable = db.prepare("SELECT * FROM timetables WHERE id = ?").get(timetableId) as any;
+            if (!timetable) return res.status(404).json({ message: "Timetable not found" });
+
+            const subjects = db.prepare("SELECT * FROM subjects WHERE semester = ? AND department = ?").all(timetable.semester, timetable.department) as any[];
+            if (subjects.length === 0) return res.status(400).json({ message: "No subjects found for this semester/department" });
+
+            const slots = db.prepare("SELECT * FROM time_slots ORDER BY day, period_number").all() as any[];
+            const rooms = db.prepare("SELECT * FROM rooms WHERE type = 'classroom'").all() as any[];
+
+            db.prepare("DELETE FROM timetable_entries WHERE timetable_id = ?").run(timetableId);
+
+            let slotIndex = 0;
+            const insertEntry = db.prepare(`
+                INSERT INTO timetable_entries (timetable_id, subject_id, faculty_id, room_id, time_slot_id)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+
+            for (const sub of subjects) {
+                const targetHours = 3; 
+                let assignedHours = 0;
+                
+                let facultyId = sub.teacher_id;
+                if (!facultyId) {
+                    const randomFaculty = db.prepare("SELECT id FROM users WHERE role = 'faculty' ORDER BY RANDOM() LIMIT 1").get() as any;
+                    facultyId = randomFaculty ? randomFaculty.id : null;
+                }
+                if (!facultyId) continue;
+
+                while (assignedHours < targetHours && slotIndex < slots.length) {
+                    const slot = slots[slotIndex];
+                    
+                    const facultyBusy = db.prepare("SELECT id FROM timetable_entries WHERE faculty_id = ? AND time_slot_id = ?").get(facultyId, slot.id);
+                    const roomBusy = db.prepare("SELECT id FROM timetable_entries WHERE room_id = ? AND time_slot_id = ?").get(rooms[0].id, slot.id);
+
+                    if (!facultyBusy && !roomBusy) {
+                        insertEntry.run(timetableId, sub.id, facultyId, rooms[0].id, slot.id);
+                        assignedHours++;
+                    }
+                    slotIndex++;
+                    if (slotIndex >= slots.length) break; 
+                }
+            }
+            
+            io.emit("timetableChanged", { department: timetable.department, semester: timetable.semester, section: timetable.section });
+
+            res.json({ message: "Timetable generated with basic constraints" });
+        } catch (e) {
+            console.error(e);
+            res.status(500).json({ message: "Failed to generate timetable" });
+        }
+    });
+
+    // Substitution Management
+    app.post("/api/admin/substitution", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { entryId, substituteFacultyId } = req.body;
+
+        try {
+            const entry = db.prepare("SELECT * FROM timetable_entries WHERE id = ?").get(entryId) as any;
+            if (!entry) return res.status(404).json({ message: "Timetable entry not found" });
+
+            db.prepare(`
+                UPDATE timetable_entries 
+                SET original_faculty_id = faculty_id, 
+                    faculty_id = ?, 
+                    is_substitution = 1 
+                WHERE id = ?
+            `).run(substituteFacultyId, entryId);
+
+            db.prepare("INSERT INTO notifications (title, message, target_role, user_id) VALUES (?, ?, ?, ?)")
+                .run("Timetable Substitution", "A substitute faculty has been assigned for your class.", "faculty", substituteFacultyId);
+            
+            const tt = db.prepare(`
+                SELECT t.department, t.semester, t.section 
+                FROM timetables t 
+                JOIN timetable_entries te ON t.id = te.timetable_id 
+                WHERE te.id = ?
+            `).get(entryId) as any;
+            if (tt) {
+                io.emit("timetableChanged", { department: tt.department, semester: tt.semester, section: tt.section });
+            }
+
+            res.json({ message: "Substitution assigned successfully" });
+        } catch (e) {
+            res.status(500).json({ message: "Failed to assign substitution" });
+        }
+    });
+
+    // Faculty: Request Substitution
+    app.post("/api/faculty/substitution-request", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const { entryId, substituteFacultyId, reason } = req.body;
+
+        try {
+            db.prepare(`
+                INSERT INTO substitution_requests (entry_id, faculty_id, substitute_faculty_id, reason)
+                VALUES (?, ?, ?, ?)
+            `).run(entryId, req.user.id, substituteFacultyId, reason);
+
+            // Notify Admin
+            db.prepare("INSERT INTO notifications (title, message, target_role) VALUES (?, ?, ?)")
+                .run("New Substitution Request", `Faculty ${req.user.name} has requested a substitution for a class. Reason: ${reason}`, "admin");
+
+            io.emit("substitutionRequested", { facultyId: req.user.id, facultyName: req.user.name });
+
+            res.json({ message: "Request sent to admin" });
+        } catch (e) {
+            res.status(500).json({ message: "Failed to send request" });
+        }
+    });
+
+    // Admin: Get Substitution Requests
+    app.get("/api/admin/substitution-requests", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        try {
+            const requests = db.prepare(`
+                SELECT sr.*, u.name as faculty_name, sub.name as substitute_name, s.name as subject_name, ts.day, ts.period_number
+                FROM substitution_requests sr
+                JOIN users u ON sr.faculty_id = u.id
+                LEFT JOIN users sub ON sr.substitute_faculty_id = sub.id
+                JOIN timetable_entries te ON sr.entry_id = te.id
+                JOIN subjects s ON te.subject_id = s.id
+                JOIN time_slots ts ON te.time_slot_id = ts.id
+                WHERE sr.status = 'pending'
+            `).all();
+            res.json(requests);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch requests" });
+        }
+    });
+
+    // Admin: Approve/Reject Substitution Request
+    app.post("/api/admin/substitution/approve", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { requestId, status } = req.body;
+
+        try {
+            const request = db.prepare("SELECT * FROM substitution_requests WHERE id = ?").get(requestId) as any;
+            if (!request) return res.status(404).json({ message: "Request not found" });
+
+            db.prepare("UPDATE substitution_requests SET status = ? WHERE id = ?").run(status, requestId);
+
+            if (status === 'approved') {
+                db.prepare(`
+                    UPDATE timetable_entries 
+                    SET original_faculty_id = faculty_id, 
+                        faculty_id = ?, 
+                        is_substitution = 1 
+                    WHERE id = ?
+                `).run(request.substitute_faculty_id, request.entry_id);
+
+                db.prepare("INSERT INTO notifications (title, message, target_role, user_id) VALUES (?, ?, ?, ?)")
+                    .run("Timetable Updated", "Your substitution request has been approved.", "faculty", request.faculty_id);
+                
+                db.prepare("INSERT INTO notifications (title, message, target_role, user_id) VALUES (?, ?, ?, ?)")
+                    .run("New Class Assigned", "You have been assigned as a substitute for a class.", "faculty", request.substitute_faculty_id);
+
+                const tt = db.prepare(`
+                    SELECT t.department, t.semester, t.section 
+                    FROM timetables t 
+                    JOIN timetable_entries te ON t.id = te.timetable_id 
+                    WHERE te.id = ?
+                `).get(request.entry_id) as any;
+                if (tt) {
+                    io.emit("timetableChanged", { department: tt.department, semester: tt.semester, section: tt.section });
+                }
+            } else {
+                db.prepare("INSERT INTO notifications (title, message, target_role, user_id) VALUES (?, ?, ?, ?)")
+                    .run("Substitution Rejected", "Your substitution request has been rejected.", "faculty", request.faculty_id);
+            }
+
+            res.json({ message: `Request ${status}` });
+        } catch (e) {
+            res.status(500).json({ message: "Action failed" });
+        }
+    });
+
     // Faculty Analysis
     app.get("/api/faculty/analysis", authenticateToken, (req: any, res) => {
         if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
         
-        // Trigger IA notification check
         checkIANotifications();
 
-        const stats = db.prepare(`
+        let statsQuery = `
             SELECT 
-                COUNT(CASE WHEN cgpa >= 9.0 THEN 1 END) as excelling,
-                COUNT(CASE WHEN cgpa >= 7.5 AND cgpa < 9.0 THEN 1 END) as good,
-                COUNT(CASE WHEN cgpa >= 6.0 AND cgpa < 7.5 THEN 1 END) as average,
-                COUNT(CASE WHEN cgpa < 6.0 THEN 1 END) as weak
-            FROM students
-        `).get() as any;
-
-        const topStudents = db.prepare(`
+                COUNT(CASE WHEN s.cgpa >= 9.0 THEN 1 END) as excelling,
+                COUNT(CASE WHEN s.cgpa >= 7.5 AND s.cgpa < 9.0 THEN 1 END) as good,
+                COUNT(CASE WHEN s.cgpa >= 6.0 AND s.cgpa < 7.5 THEN 1 END) as average,
+                COUNT(CASE WHEN s.cgpa < 6.0 THEN 1 END) as weak
+            FROM students s
+            JOIN users u ON s.user_id = u.id
+        `;
+        let topStudentsQuery = `
             SELECT u.name, s.cgpa, u.department
             FROM students s
             JOIN users u ON s.user_id = u.id
-            ORDER BY s.cgpa DESC
-            LIMIT 5
-        `).all();
+        `;
+        let params: any[] = [];
+
+        if (req.user.role === 'faculty') {
+            const facultyFilter = `
+                WHERE EXISTS (
+                    SELECT 1 FROM subjects sub 
+                    WHERE sub.teacher_id = ? 
+                    AND sub.semester = s.semester 
+                    AND sub.department = u.department
+                )
+            `;
+            statsQuery += facultyFilter;
+            topStudentsQuery += facultyFilter;
+            params.push(req.user.id);
+        }
+
+        const stats = db.prepare(statsQuery).get(...params) as any;
+        const topStudents = db.prepare(topStudentsQuery + " ORDER BY s.cgpa DESC LIMIT 5").all(...params);
 
         const notifications = db.prepare(`
             SELECT * FROM notifications 
@@ -488,13 +1571,67 @@ async function startServer() {
             ORDER BY created_at DESC LIMIT 10
         `).all(req.user.role, req.user.id);
 
-        res.json({ stats, topStudents, notifications });
+        res.json({ stats, topStudents, notifications, token: req.token });
     });
 
     // Faculty: Update Attendance
+    // Admin: Get attendance summary for all students
+    app.get("/api/admin/attendance/summary", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        
+        const summary = db.prepare(`
+            SELECT 
+                s.id as student_id,
+                u.name as student_name,
+                s.roll_number,
+                u.department,
+                s.semester,
+                COUNT(a.id) as total_classes,
+                SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_count
+            FROM students s
+            JOIN users u ON s.user_id = u.id
+            LEFT JOIN attendance a ON s.id = a.student_id
+            GROUP BY s.id
+        `).all();
+        
+        res.json(summary.map((row: any) => ({
+            ...row,
+            percentage: row.total_classes > 0 ? Math.round((row.present_count / row.total_classes) * 100) : 0
+        })));
+    });
+
+    app.get("/api/admin/attendance/subject-stats", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        
+        const stats = db.prepare(`
+            SELECT 
+                sub.id as subject_id,
+                sub.code,
+                sub.name,
+                COUNT(a.id) as total_records,
+                SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_count
+            FROM subjects sub
+            LEFT JOIN attendance a ON sub.id = a.subject_id
+            GROUP BY sub.id
+        `).all();
+        
+        res.json(stats.map((row: any) => ({
+            ...row,
+            average: row.total_records > 0 ? Math.round((row.present_count / row.total_records) * 100) : 0
+        })));
+    });
+
     app.post("/api/faculty/attendance", authenticateToken, (req: any, res) => {
         if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
         const { studentId, subjectId, date, status } = req.body;
+        
+        // Security check for faculty
+        if (req.user.role === 'faculty') {
+            const subject = db.prepare("SELECT teacher_id FROM subjects WHERE id = ?").get(subjectId) as any;
+            if (!subject || subject.teacher_id !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden: You are not the assigned teacher for this subject" });
+            }
+        }
         
         db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
             studentId, subjectId, date, status
@@ -519,6 +1656,22 @@ async function startServer() {
             res.json({ success: true });
         } catch (e) {
             res.status(400).json({ message: "Email or Roll Number already exists" });
+        }
+    });
+
+    // Admin: Add Faculty
+    app.post("/api/admin/faculty", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { name, email, password, department } = req.body;
+        const hashedPassword = bcrypt.hashSync(password, 10);
+        
+        try {
+            db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)").run(
+                name, email, hashedPassword, "faculty", department
+            );
+            res.json({ success: true });
+        } catch (e) {
+            res.status(400).json({ message: "Email already exists" });
         }
     });
 
@@ -599,14 +1752,14 @@ async function startServer() {
     // Faculty/Admin: Add Event
     app.post("/api/events", authenticateToken, (req: any, res) => {
         if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-        const { title, description, date, venue, category, organizer, department } = req.body;
-        db.prepare("INSERT INTO events (title, description, date, venue, category, organizer, department, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-            title, description, date, venue, category, organizer, department, req.user.id
+        const { title, description, date, venue, category, organizer, department, registrationDeadline, coordinatorId } = req.body;
+        db.prepare("INSERT INTO events (title, description, date, venue, category, organizer, department, created_by, registration_deadline, coordinator_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+            title, description, date, venue, category, organizer, department, req.user.id, registrationDeadline, coordinatorId || req.user.id
         );
         
         // Notify all students about new event
         db.prepare("INSERT INTO notifications (title, message, target_role) VALUES (?, ?, ?)").run(
-            "New Event Added", `Register now for ${title} happening on ${date}!`, "student"
+            "New Event Added", `Register now for ${title} happening on ${date}! Deadline: ${registrationDeadline || 'N/A'}`, "student"
         );
         
         res.json({ success: true });
@@ -672,16 +1825,44 @@ async function startServer() {
     // Search Students
     app.get("/api/students/search", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
-        const query = req.query.q;
-        if (!query) return res.json([]);
+        const { q, department, semester } = req.query;
         
-        const students = db.prepare(`
+        let sql = `
             SELECT s.*, u.name, u.email, u.department 
             FROM students s 
             JOIN users u ON s.user_id = u.id
-            WHERE u.name LIKE ? OR s.roll_number LIKE ?
-            LIMIT 10
-        `).all(`%${query}%`, `%${query}%`);
+            WHERE 1=1
+        `;
+        const params: any[] = [];
+
+        if (req.user.role === 'faculty') {
+            sql += `
+                AND EXISTS (
+                    SELECT 1 FROM subjects sub 
+                    WHERE sub.teacher_id = ? 
+                    AND sub.semester = s.semester 
+                    AND sub.department = u.department
+                )
+            `;
+            params.push(req.user.id);
+        }
+
+        if (q) {
+            sql += ` AND (u.name LIKE ? OR s.roll_number LIKE ?)`;
+            params.push(`%${q}%`, `%${q}%`);
+        }
+        if (department) {
+            sql += ` AND u.department = ?`;
+            params.push(department);
+        }
+        if (semester) {
+            sql += ` AND s.semester = ?`;
+            params.push(parseInt(semester as string));
+        }
+
+        sql += ` LIMIT 20`;
+        
+        const students = db.prepare(sql).all(...params);
         res.json(students);
     });
 
@@ -697,6 +1878,27 @@ async function startServer() {
         res.json(fees);
     });
 
+    // Admin: Get overall stats
+    app.get("/api/admin/stats", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        
+        const studentsCount = db.prepare("SELECT count(*) as count FROM students").get() as { count: number };
+        const facultyCount = db.prepare("SELECT count(*) as count FROM users WHERE role = 'faculty'").get() as { count: number };
+        
+        // Count unique students present today (or most recent date)
+        const today = new Date().toISOString().split('T')[0];
+        const presentToday = db.prepare("SELECT count(DISTINCT student_id) as count FROM attendance WHERE status = 'present' AND date = ?").get(today) as { count: number };
+        
+        const revenue = db.prepare("SELECT SUM(amount) as total FROM fees WHERE status = 'paid'").get() as { total: number };
+        
+        res.json({
+            students: studentsCount.count,
+            faculty: facultyCount.count,
+            attendance: presentToday.count,
+            revenue: revenue.total || 0
+        });
+    });
+
     // Admin: Update Student CGPA and Markscard
     app.post("/api/admin/students/update", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
@@ -708,46 +1910,129 @@ async function startServer() {
     // Admin: Get Students
     app.get("/api/admin/students", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
-        const students = db.prepare(`
+        
+        let query = `
             SELECT s.*, u.name, u.email, u.department 
             FROM students s 
             JOIN users u ON s.user_id = u.id
-        `).all();
+        `;
+        let params: any[] = [];
+
+        if (req.user.role === 'faculty') {
+            query += `
+                WHERE EXISTS (
+                    SELECT 1 FROM subjects sub 
+                    WHERE sub.teacher_id = ? 
+                    AND sub.semester = s.semester 
+                    AND sub.department = u.department
+                )
+            `;
+            params.push(req.user.id);
+        }
+
+        const students = db.prepare(query).all(...params);
         res.json(students);
     });
 
-    // Results
-    app.get("/api/results/student/:userId", authenticateToken, (req: any, res) => {
-        const userId = req.params.userId;
-        const student = db.prepare("SELECT id, semester, cgpa FROM students WHERE user_id = ?").get(userId) as any;
-        if (!student) return res.status(404).json({ message: "Student not found" });
-
-        const results = db.prepare(`
-            SELECT r.*, sub.name as subject_name, sub.code as subject_code
-            FROM results r
-            JOIN subjects sub ON r.subject_id = sub.id
-            WHERE r.student_id = ?
-            ORDER BY r.semester DESC
-        `).all(student.id);
-
-        res.json({ results, cgpa: student.cgpa, semester: student.semester });
+    // Admin: Get Faculty
+    app.get("/api/admin/faculty", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const faculty = db.prepare("SELECT id, name, email, department FROM users WHERE role = 'faculty'").all();
+        res.json(faculty);
     });
 
+    // Public Faculty List (for Timetable/Substitution)
+    app.get("/api/faculty", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        try {
+            const faculty = db.prepare("SELECT id, name, email, department FROM users WHERE role = 'faculty'").all();
+            res.json(faculty);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch faculty list" });
+        }
+    });
+
+    // Results
     app.post("/api/results", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
-        const { studentId, semester, subjectId, marks, grade } = req.body;
+        const { studentId, semester, subjectId, internalMarks, externalMarks } = req.body;
         
-        db.prepare("INSERT INTO results (student_id, semester, subject_id, marks, grade) VALUES (?, ?, ?, ?, ?)").run(
-            studentId, semester, subjectId, marks, grade
-        );
+        // Authorization check: Admin OR the teacher assigned to this subject
+        if (req.user.role === "faculty") {
+            const subject = db.prepare("SELECT teacher_id FROM subjects WHERE id = ?").get(subjectId) as any;
+            if (!subject || subject.teacher_id !== req.user.id) {
+                return res.status(403).json({ message: "Forbidden: You are not the assigned teacher for this subject" });
+            }
+        }
 
-        // Recalculate CGPA (simplified)
-        const allResults = db.prepare("SELECT marks FROM results WHERE student_id = ?").all(studentId) as any[];
-        const avgMarks = allResults.reduce((acc, r) => acc + r.marks, 0) / allResults.length;
-        const newCgpa = (avgMarks / 10).toFixed(2);
-        db.prepare("UPDATE students SET cgpa = ? WHERE id = ?").run(newCgpa, studentId);
+        const totalMarks = (parseInt(internalMarks) || 0) + (parseInt(externalMarks) || 0);
+        
+        const sub = db.prepare("SELECT code, credits FROM subjects WHERE id = ?").get(subjectId) as any;
+        
+        // Calculate Grade (VTU logic based on user table)
+        let grade = "F";
+        if (totalMarks >= 90) grade = "O";
+        else if (totalMarks >= 80) grade = "A+";
+        else if (totalMarks >= 70) grade = "A";
+        else if (totalMarks >= 60) grade = "B+";
+        else if (totalMarks >= 55) grade = "B";
+        else if (totalMarks >= 50) grade = "C";
+        
+        const credits = sub.credits || 3;
+        const creditsObtained = grade === "F" ? 0 : credits;
 
-        res.json({ success: true });
+        const existingResult = db.prepare("SELECT id FROM results WHERE student_id = ? AND subject_id = ?").get(studentId, subjectId) as any;
+
+        if (existingResult) {
+            db.prepare(`
+                UPDATE results 
+                SET internal_marks = ?, external_marks = ?, marks = ?, grade = ?, credits_obtained = ? 
+                WHERE id = ?
+            `).run(internalMarks, externalMarks, totalMarks, grade, creditsObtained, existingResult.id);
+        } else {
+            db.prepare(`
+                INSERT INTO results (student_id, semester, subject_id, internal_marks, external_marks, marks, grade, credits_obtained) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(studentId, semester, subjectId, internalMarks, externalMarks, totalMarks, grade, creditsObtained);
+        }
+
+        // Recalculate SGPA for the modified semester and total CGPA using data from database
+        const student = db.prepare("SELECT semester FROM students WHERE id = ?").get(studentId) as any;
+        const allRes = db.prepare(`
+            SELECT r.grade, s.credits, r.semester
+            FROM results r
+            JOIN subjects s ON r.subject_id = s.id
+            WHERE r.student_id = ?
+        `).all(studentId) as any[];
+
+        const semesterHistory: any = {};
+        allRes.forEach(r => {
+            if (!semesterHistory[r.semester]) semesterHistory[r.semester] = { totalCredits: 0, weightedSum: 0 };
+            const points = gradePoints[r.grade] || 0;
+            semesterHistory[r.semester].totalCredits += r.credits;
+            semesterHistory[r.semester].weightedSum += (r.credits * points);
+        });
+
+        let totalOverallWeightedSum = 0;
+        let totalOverallCredits = 0;
+        let currentSemSgpa = 0;
+
+        Object.keys(semesterHistory).forEach(sKey => {
+            const sem = semesterHistory[sKey];
+            const sgpaValue = sem.totalCredits > 0 ? (sem.weightedSum / sem.totalCredits) : 0;
+            
+            totalOverallWeightedSum += sem.weightedSum;
+            totalOverallCredits += sem.totalCredits;
+            
+            if (parseInt(sKey) === student.semester) {
+                currentSemSgpa = sgpaValue;
+            }
+        });
+
+        const newCgpa = totalOverallCredits > 0 ? (totalOverallWeightedSum / totalOverallCredits).toFixed(2) : "0.00";
+        db.prepare("UPDATE students SET cgpa = ?, sgpa = ? WHERE id = ?").run(newCgpa, currentSemSgpa.toFixed(2), studentId);
+
+        res.json({ success: true, cgpa: parseFloat(newCgpa), sgpa: parseFloat(currentSemSgpa.toFixed(2)) });
     });
 
     // Event Attendance Alert
@@ -975,7 +2260,7 @@ async function startServer() {
         res.status(500).json({ message: "Internal Server Error", error: err.message });
     });
 
-    app.listen(PORT, "0.0.0.0", () => {
+    httpServer.listen(PORT, "0.0.0.0", () => {
         console.log(`Server running on http://localhost:${PORT}`);
     });
 }

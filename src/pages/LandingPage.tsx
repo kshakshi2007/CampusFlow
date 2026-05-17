@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ArrowRight, BookOpen, Calendar, Search, ShieldCheck, Users } from 'lucide-react';
+import { ArrowRight, BookOpen, Calendar, Search, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function LandingPage() {
@@ -24,10 +24,10 @@ export default function LandingPage() {
             </nav>
 
             {/* Hero Section */}
-            <main className="max-w-7xl mx-auto px-8 pt-12 pb-24 grid lg:grid-cols-2 gap-16 items-center">
+            <main className="max-w-7xl mx-auto px-8 pt-12 pb-24 flex flex-col items-center text-center">
                 <motion.div 
-                    initial={{ opacity: 0, x: -50 }}
-                    animate={{ opacity: 1, x: 0 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                 >
                     <h1 className="text-6xl md:text-7xl font-bold text-[#1F2937] leading-[1.1] tracking-tight mb-8">
@@ -35,17 +35,17 @@ export default function LandingPage() {
                         <span className="text-[#7C3AED]">Campus Life</span> <br />
                         with Ease.
                     </h1>
-                    <p className="text-lg text-[#6B7280] max-w-lg mb-10 leading-relaxed">
+                    <p className="text-lg text-[#6B7280] max-w-2xl mx-auto mb-10 leading-relaxed">
                         The all-in-one centralized ERP platform for students and faculty. 
                         Streamline academics, events, and utilities in one unified, modern workspace.
                     </p>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-center gap-4">
                         <Link to="/login" className="px-8 py-4 bg-[#7C3AED] text-white rounded-full font-semibold flex items-center gap-2 hover:bg-[#6D28D9] transition-all group shadow-xl shadow-purple-200">
                             Get Started <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                         </Link>
                     </div>
 
-                    <div className="mt-16 flex items-center gap-8">
+                    <div className="mt-16 flex flex-col items-center gap-4">
                         <div className="flex -space-x-3">
                             {[1, 2, 3, 4].map((i) => (
                                 <div key={i} className="w-12 h-12 rounded-full border-4 border-white bg-gray-200 overflow-hidden">
@@ -59,46 +59,6 @@ export default function LandingPage() {
                     </div>
                 </motion.div>
 
-                <motion.div 
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 1, delay: 0.2 }}
-                    className="relative"
-                >
-                    {/* Dashboard Mockup */}
-                    <div className="relative z-10 bg-white rounded-[40px] p-4 shadow-2xl border-8 border-[#1F2937]">
-                        <div className="bg-[#F9FAFB] rounded-[32px] overflow-hidden aspect-[9/16] md:aspect-[16/10]">
-                            <div className="p-6">
-                                <div className="flex justify-between items-center mb-8">
-                                    <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center">
-                                        <Users className="text-[#7C3AED] w-6 h-6" />
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <div className="w-8 h-8 bg-white rounded-full shadow-sm" />
-                                        <div className="w-8 h-8 bg-white rounded-full shadow-sm" />
-                                    </div>
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="h-32 bg-white rounded-3xl p-4 shadow-sm border border-gray-50">
-                                        <div className="w-1/2 h-4 bg-gray-100 rounded mb-4" />
-                                        <div className="flex gap-2">
-                                            <div className="flex-1 h-12 bg-purple-50 rounded-xl" />
-                                            <div className="flex-1 h-12 bg-blue-50 rounded-xl" />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="h-40 bg-white rounded-3xl p-4 shadow-sm border border-gray-50" />
-                                        <div className="h-40 bg-white rounded-3xl p-4 shadow-sm border border-gray-50" />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Decorative Elements */}
-                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-200 rounded-full blur-3xl opacity-50" />
-                    <div className="absolute -bottom-10 -left-10 w-60 h-60 bg-blue-200 rounded-full blur-3xl opacity-50" />
-                </motion.div>
             </main>
 
             {/* Features Grid */}

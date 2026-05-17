@@ -29,10 +29,14 @@ CREATE TABLE IF NOT EXISTS students (
 -- Subjects
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT UNIQUE NOT NULL,
+    code TEXT NOT NULL,
     name TEXT NOT NULL,
     semester INTEGER NOT NULL,
-    department TEXT NOT NULL
+    department TEXT NOT NULL,
+    credits INTEGER DEFAULT 3,
+    teacher_id INTEGER,
+    UNIQUE(code, department),
+    FOREIGN KEY (teacher_id) REFERENCES users(id)
 );
 
 -- Student-Subject Mapping (Many-to-Many)
@@ -199,8 +203,11 @@ CREATE TABLE IF NOT EXISTS results (
     student_id INTEGER NOT NULL,
     semester INTEGER NOT NULL,
     subject_id INTEGER NOT NULL,
-    marks INTEGER NOT NULL,
+    internal_marks INTEGER DEFAULT 0,
+    external_marks INTEGER DEFAULT 0,
+    marks INTEGER NOT NULL, -- Total internal + external
     grade TEXT NOT NULL,
+    credits_obtained INTEGER DEFAULT 0,
     FOREIGN KEY (student_id) REFERENCES students(id),
     FOREIGN KEY (subject_id) REFERENCES subjects(id)
 );
@@ -221,4 +228,63 @@ CREATE TABLE IF NOT EXISTS ia_schedules (
     ia_number INTEGER NOT NULL, -- 1, 2, 3
     date DATE NOT NULL,
     FOREIGN KEY (subject_id) REFERENCES subjects(id)
+);
+
+-- Timetables
+CREATE TABLE IF NOT EXISTS timetables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    department TEXT NOT NULL,
+    semester INTEGER NOT NULL,
+    section TEXT NOT NULL DEFAULT 'A',
+    academic_year TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Rooms
+CREATE TABLE IF NOT EXISTS rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_name TEXT NOT NULL,
+    type TEXT CHECK(type IN ('classroom', 'lab')) NOT NULL DEFAULT 'classroom',
+    capacity INTEGER NOT NULL DEFAULT 60
+);
+
+-- Time Slots
+CREATE TABLE IF NOT EXISTS time_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT CHECK(day IN ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday')) NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    period_number INTEGER NOT NULL,
+    UNIQUE(day, period_number)
+);
+
+-- Timetable Entries
+CREATE TABLE IF NOT EXISTS timetable_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timetable_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    faculty_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+    time_slot_id INTEGER NOT NULL,
+    is_substitution INTEGER DEFAULT 0,
+    original_faculty_id INTEGER,
+    FOREIGN KEY (timetable_id) REFERENCES timetables(id),
+    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+    FOREIGN KEY (faculty_id) REFERENCES users(id),
+    FOREIGN KEY (room_id) REFERENCES rooms(id),
+    FOREIGN KEY (time_slot_id) REFERENCES time_slots(id)
+);
+
+-- Substitution Requests
+CREATE TABLE IF NOT EXISTS substitution_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL,
+    faculty_id INTEGER NOT NULL,
+    substitute_faculty_id INTEGER,
+    reason TEXT NOT NULL,
+    status TEXT CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (entry_id) REFERENCES timetable_entries(id),
+    FOREIGN KEY (faculty_id) REFERENCES users(id),
+    FOREIGN KEY (substitute_faculty_id) REFERENCES users(id)
 );
