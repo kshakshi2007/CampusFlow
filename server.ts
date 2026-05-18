@@ -284,6 +284,20 @@ const gradePoints: any = { "O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5, "F
 const schema = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
 db.exec(schema);
 
+// Ensure avatar_url exists
+try {
+    db.prepare("ALTER TABLE users ADD COLUMN avatar_url TEXT").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE users ADD COLUMN can_edit_profile INTEGER DEFAULT 1").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN has_updated_profile INTEGER DEFAULT 0").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN can_edit_profile INTEGER DEFAULT 1").run();
+} catch (e) {}
+
 // Ensure markscard_url exists
 try {
     db.prepare("ALTER TABLE students ADD COLUMN markscard_url TEXT").run();
@@ -352,7 +366,48 @@ try {
     db.prepare("ALTER TABLE students ADD COLUMN sgpa REAL DEFAULT 0.0").run();
 } catch (e) {}
 try {
+    db.prepare("ALTER TABLE students ADD COLUMN has_updated_profile INTEGER DEFAULT 0").run();
+} catch (e) {}
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN can_edit_profile INTEGER DEFAULT 0").run();
+} catch (e) {}
+try {
     db.prepare("ALTER TABLE books ADD COLUMN description TEXT").run();
+} catch (e) {}
+
+// Attendance Lifecycle Extensions
+try {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS attendance_locks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER NOT NULL,
+            locked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            locked_by INTEGER NOT NULL,
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        );
+        CREATE TABLE IF NOT EXISTS attendance_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            attendance_id INTEGER,
+            student_id INTEGER NOT NULL,
+            subject_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            old_status TEXT,
+            new_status TEXT NOT NULL,
+            changed_by INTEGER NOT NULL,
+            reason TEXT,
+            changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS attendance_qr (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER NOT NULL,
+            faculty_id INTEGER NOT NULL,
+            qr_token TEXT UNIQUE NOT NULL,
+            expires_at DATETIME NOT NULL,
+            latitude REAL,
+            longitude REAL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
 } catch (e) {}
 
 // Migrations for results management
@@ -1137,12 +1192,18 @@ async function startServer() {
     // Student Profile
     app.get("/api/student/profile", authenticateToken, (req: any, res) => {
         const student = db.prepare(`
-            SELECT s.*, u.name, u.email, u.department, u.role
+            SELECT s.*, u.name, u.email, u.department, u.role, u.avatar_url
             FROM users u
             LEFT JOIN students s ON s.user_id = u.id 
             WHERE u.id = ?
         `).get(req.user.id) as any;
         res.json(student);
+    });
+
+    app.post("/api/student/profile/avatar", authenticateToken, (req: any, res) => {
+        const { avatarUrl } = req.body;
+        db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?").run(avatarUrl, req.user.id);
+        res.json({ success: true, avatarUrl });
     });
 
     app.post("/api/student/profile/update", authenticateToken, (req: any, res) => {
@@ -1154,19 +1215,71 @@ async function startServer() {
         
         const user = db.prepare("SELECT role FROM users WHERE id = ?").get(req.user.id) as any;
         if (user.role === 'student') {
+            const student = db.prepare("SELECT has_updated_profile, can_edit_profile FROM students WHERE user_id = ?").get(req.user.id) as any;
+            
+            if (student.has_updated_profile && !student.can_edit_profile) {
+                return res.status(403).json({ message: "Profile is locked. Please contact administrator to make changes." });
+            }
+
             db.prepare(`
                 UPDATE students SET 
                     contact = ?, achievements = ?, address = ?, dob = ?, 
                     gender = ?, blood_group = ?, father_name = ?, 
-                    mother_name = ?, guardian_contact = ?, enrollment_year = ? 
+                    mother_name = ?, guardian_contact = ?, enrollment_year = ?,
+                    has_updated_profile = 1, can_edit_profile = 0
                 WHERE user_id = ?
             `).run(
                 contact, achievements, address, dob, gender, 
                 blood_group, father_name, mother_name, 
                 guardian_contact, enrollment_year, req.user.id
             );
+            
+            // Allow name update if not locked
+            if (req.body.name) {
+                db.prepare("UPDATE users SET name = ? WHERE id = ?").run(req.body.name, req.user.id);
+            }
         }
         res.json({ success: true });
+    });
+
+    app.post("/api/admin/student/grant-edit", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { studentId } = req.body;
+        db.prepare("UPDATE students SET can_edit_profile = 1 WHERE id = ?").run(studentId);
+        res.json({ success: true });
+    });
+
+    app.get("/api/admin/students", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const students = db.prepare(`
+            SELECT s.*, u.name, u.email, u.department
+            FROM students s
+            JOIN users u ON s.user_id = u.id
+        `).all();
+        res.json(students);
+    });
+
+    app.post("/api/faculty/attendance/qr/mark", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const { rollNumber, subjectId, date } = req.body;
+        
+        const student = db.prepare("SELECT id FROM students WHERE roll_number = ?").get(rollNumber) as any;
+        if (!student) return res.status(404).json({ message: "Student with this Roll Number not found" });
+
+        // Check for lock
+        const locked = db.prepare("SELECT id FROM attendance_locks WHERE subject_id = ?").get(subjectId);
+        if (locked && req.user.role !== 'admin') {
+            return res.status(403).json({ message: "This subject is locked for attendance changes. Contact Admin." });
+        }
+
+        try {
+            db.prepare("INSERT OR REPLACE INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
+                student.id, subjectId, date || new Date().toISOString().split('T')[0], 'present'
+            );
+            res.json({ success: true, studentName: student.name });
+        } catch (e) {
+            res.status(500).json({ message: "Failed to mark attendance" });
+        }
     });
 
     // Subjects
@@ -1830,7 +1943,7 @@ async function startServer() {
             JOIN users u ON s.user_id = u.id
         `;
         let topStudentsQuery = `
-            SELECT u.name, s.cgpa, u.department
+            SELECT u.name, s.cgpa, u.department, s.semester
             FROM students s
             JOIN users u ON s.user_id = u.id
         `;
@@ -1920,11 +2033,145 @@ async function startServer() {
                 return res.status(403).json({ message: "Forbidden: You are not the assigned teacher for this subject" });
             }
         }
+
+        // Check for lock
+        const locked = db.prepare("SELECT id FROM attendance_locks WHERE subject_id = ?").get(subjectId);
+        if (locked && req.user.role !== 'admin') {
+            return res.status(403).json({ message: "This subject is locked for attendance changes. Contact Admin." });
+        }
         
         db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)").run(
             studentId, subjectId, date, status
         );
         res.json({ success: true });
+    });
+
+    app.post("/api/faculty/attendance/bulk", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { records } = req.body; // { studentId, subjectId, date, status }[]
+        
+        if (!records || records.length === 0) return res.json({ success: true });
+        
+        const subjectId = records[0].subjectId;
+        
+        // Check for lock
+        const locked = db.prepare("SELECT id FROM attendance_locks WHERE subject_id = ?").get(subjectId);
+        if (locked && req.user.role !== 'admin') {
+            return res.status(403).json({ message: "This subject is locked for attendance changes. Contact Admin." });
+        }
+
+        const insert = db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, ?)");
+        const deleteOld = db.prepare("DELETE FROM attendance WHERE student_id = ? AND subject_id = ? AND date = ?");
+        
+        const transaction = db.transaction((recs) => {
+            for (const r of recs) {
+                const dateOnly = r.date.split('T')[0];
+                deleteOld.run(r.studentId, r.subjectId, dateOnly);
+                insert.run(r.studentId, r.subjectId, dateOnly, r.status);
+            }
+        });
+        
+        transaction(records);
+        res.json({ success: true });
+    });
+
+    app.get("/api/admin/attendance/locks", authenticateToken, (req: any, res) => {
+        const locks = db.prepare("SELECT subject_id FROM attendance_locks").all();
+        res.json(locks.map((l: any) => l.subject_id));
+    });
+
+    app.post("/api/admin/attendance/lock", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const { subjectId } = req.body;
+        
+        if (req.user.role === "faculty") {
+            const sub = db.prepare("SELECT teacher_id FROM subjects WHERE id = ?").get(subjectId) as any;
+            if (!sub || sub.teacher_id !== req.user.id) {
+                return res.status(403).json({ message: "You can only lock your own subjects" });
+            }
+        }
+
+        db.prepare("INSERT OR IGNORE INTO attendance_locks (subject_id, locked_by) VALUES (?, ?)").run(subjectId, req.user.id);
+        res.json({ success: true });
+    });
+
+    app.post("/api/admin/attendance/unlock", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { subjectId } = req.body;
+        db.prepare("DELETE FROM attendance_locks WHERE subject_id = ?").run(subjectId);
+        res.json({ success: true });
+    });
+
+    app.get("/api/admin/attendance/defaulters", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
+        const defaulters = db.prepare(`
+            SELECT s.id as student_id, u.name, u.email, s.roll_number, u.department, s.semester,
+                   sub.id as subject_id, sub.name as subject_name,
+                   (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.id AND a.subject_id = sub.id) as total_classes,
+                   (SELECT COUNT(*) FROM attendance a WHERE a.student_id = s.id AND a.subject_id = sub.id AND a.status = 'present') as present_classes
+            FROM students s
+            JOIN users u ON s.user_id = u.id
+            JOIN student_subjects ss ON s.id = ss.student_id
+            JOIN subjects sub ON ss.subject_id = sub.id
+        `).all();
+
+        const filtered = defaulters.map((d: any) => ({
+            ...d,
+            percentage: d.total_classes > 0 ? Math.round((d.present_classes / d.total_classes) * 100) : 0
+        })).filter((d: any) => d.percentage < 75);
+
+        res.json(filtered);
+    });
+
+    app.get("/api/attendance/trends", authenticateToken, (req: any, res) => {
+        // Mocking trend data for analytics
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const data = days.map(day => ({
+            name: day,
+            attendance: 70 + Math.floor(Math.random() * 25),
+            expected: 85
+        }));
+        res.json(data);
+    });
+
+    app.post("/api/attendance/qr-generate", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { subjectId, latitude, longitude } = req.body;
+        const qrToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        
+        db.prepare("DELETE FROM attendance_qr WHERE subject_id = ?").run(subjectId);
+        db.prepare("INSERT INTO attendance_qr (subject_id, faculty_id, qr_token, expires_at, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?)").run(
+            subjectId, req.user.id, qrToken, expiresAt, latitude, longitude
+        );
+        res.json({ qrToken, expiresAt });
+    });
+
+    app.post("/api/attendance/qr-scan", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "student") return res.status(403).json({ message: "Forbidden" });
+        const { qrToken, latitude, longitude } = req.body;
+        
+        const qr = db.prepare("SELECT * FROM attendance_qr WHERE qr_token = ?").get(qrToken) as any;
+        if (!qr) return res.status(400).json({ message: "Invalid or expired QR code" });
+        if (new Date(qr.expires_at) < new Date()) return res.status(400).json({ message: "QR code has expired" });
+
+        // Geometric boundary check (simulated)
+        if (qr.latitude && qr.longitude && latitude && longitude) {
+            const diff = Math.abs(qr.latitude - latitude) + Math.abs(qr.longitude - longitude);
+            if (diff > 0.005) return res.status(400).json({ message: "Location mismatch! You must be near the marked classroom." });
+        }
+
+        const student = db.prepare("SELECT id FROM students WHERE user_id = ?").get(req.user.id) as any;
+        const today = new Date().toISOString().split('T')[0];
+        
+        try {
+            db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, 'present')").run(
+                student.id, qr.subject_id, today
+            );
+            res.json({ success: true });
+        } catch (e) {
+            res.status(400).json({ message: "Attendance already marked or error occurred" });
+        }
     });
 
     // Admin: Add Student
@@ -2195,6 +2442,13 @@ async function startServer() {
         res.json({ success: true });
     });
 
+    app.post("/api/admin/students/grant-edit", authenticateToken, (req: any, res) => {
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+        const { studentId } = req.body;
+        db.prepare("UPDATE students SET can_edit_profile = 1 WHERE id = ?").run(studentId);
+        res.json({ success: true });
+    });
+
     // Admin: Get Students
     app.get("/api/admin/students", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin" && req.user.role !== "faculty") return res.status(403).json({ message: "Forbidden" });
@@ -2366,7 +2620,7 @@ async function startServer() {
     // Admin Profile
     app.get("/api/admin/profile", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-        const admin = db.prepare("SELECT id, name, email, role FROM users WHERE id = ?").get(req.user.id) as any;
+        const admin = db.prepare("SELECT id, name, email, role, avatar_url FROM users WHERE id = ?").get(req.user.id) as any;
         const totalStudents = db.prepare("SELECT COUNT(*) as count FROM students").get() as any;
         res.json({ ...admin, totalStudents: totalStudents.count });
     });

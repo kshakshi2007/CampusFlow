@@ -1,5 +1,11 @@
 {
-  "name": "CampusFlow - College Management System",
-  "description": "A comprehensive ERP platform for college management, featuring student dashboards, academic resources, event tracking, and administrative controls.",
-  "requestFramePermissions": []
+  "name": "CampusFlow ERP - Attendance & Profile Lifecycle Management",
+  "description": "A high-fidelity college ERP system with full-stack attendance lifecycle management (QR check-in, defaulter tools, analytics), strictly controlled student profile updates, and master schedule management.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

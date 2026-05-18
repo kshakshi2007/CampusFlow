@@ -9,8 +9,14 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const { login } = useAuth();
+    const { login, isAuthenticated } = useAuth() as any;
     const navigate = useNavigate();
+
+    React.useEffect(() => {
+        if (isAuthenticated) {
+            navigate('/dashboard');
+        }
+    }, [isAuthenticated, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,6 +33,7 @@ export default function LoginPage() {
             const data = await response.json().catch(() => ({ message: 'Login failed' }));
             if (response.ok) {
                 login(data.token, data.user);
+                // The navigate will be handled by the useEffect or immediately here
                 navigate('/dashboard');
             } else {
                 setError(data.message || 'Login failed');
@@ -53,7 +60,14 @@ export default function LoginPage() {
                     <p className="text-[#6B7280] mt-2">Login to access your campus portal</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form 
+                    id="login-form"
+                    name="loginForm"
+                    method="POST"
+                    onSubmit={handleSubmit} 
+                    className="space-y-6"
+                    autoComplete="on"
+                >
                     <div>
                         <label htmlFor="email" className="block text-sm font-semibold text-[#374151] mb-2 ml-1">Email Address</label>
                         <div className="relative">
@@ -62,7 +76,7 @@ export default function LoginPage() {
                                 id="email"
                                 name="email"
                                 type="email" 
-                                autoComplete="username"
+                                autoComplete="email username"
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
@@ -73,7 +87,10 @@ export default function LoginPage() {
                     </div>
 
                     <div>
-                        <label htmlFor="password" className="block text-sm font-semibold text-[#374151] mb-2 ml-1">Password</label>
+                        <div className="flex justify-between mb-2 ml-1">
+                            <label htmlFor="password" className="block text-sm font-semibold text-[#374151]">Password</label>
+                            <span className="text-[10px] text-[#7C3AED] font-bold cursor-pointer hover:underline">Forgot?</span>
+                        </div>
                         <div className="relative">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9CA3AF]" />
                             <input 
@@ -90,12 +107,18 @@ export default function LoginPage() {
                         </div>
                     </div>
 
+                    <div className="flex items-center gap-2 px-1">
+                        <input type="checkbox" id="remember" className="w-4 h-4 rounded-md border-gray-300 text-[#7C3AED] focus:ring-[#7C3AED]" />
+                        <label htmlFor="remember" className="text-xs text-[#6B7280] font-medium cursor-pointer select-none">Stay logged in on this browser</label>
+                    </div>
+
                     {error && (
                         <p className="text-red-500 text-sm text-center font-medium bg-red-50 py-2 rounded-xl">{error}</p>
                     )}
 
                     <button 
                         type="submit"
+                        name="submit"
                         disabled={loading}
                         className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold text-lg hover:bg-[#6D28D9] transition-all shadow-lg shadow-purple-200 disabled:opacity-50"
                     >

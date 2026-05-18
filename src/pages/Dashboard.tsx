@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { io } from 'socket.io-client';
 import { 
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
     ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText,
-    MapPin, Phone, Award, QrCode, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle, X, Camera, FileUp,
-    Library, Trash2, Home, AlertTriangle, Menu, Edit, Grid, Box, Filter, Save
+    MapPin, Phone, Award, QrCode as QrIcon, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle, X, Camera, FileUp,
+    Library, Trash2, Home, AlertTriangle, Menu, Edit, Grid, Box, Filter, Save, Lock, Unlock, Send
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../context/AuthContext';
@@ -82,7 +82,7 @@ export default function Dashboard() {
     const renderContent = () => {
         switch (activeTab) {
             case 'Dashboard':
-                if (user?.role === 'student') return <StudentDashboard data={data} user={user} />;
+                if (user?.role === 'student') return <StudentDashboard data={data} user={user} setActiveTab={setActiveTab} />;
                 if (user?.role === 'faculty') return <FacultyDashboard data={data} user={user} />;
                 if (user?.role === 'librarian') return <LibrarianDashboard token={token!} />;
                 return <FacultyDashboard data={data} user={user} />; // Default
@@ -115,7 +115,7 @@ export default function Dashboard() {
             case 'Profile':
                 return <ProfileView token={token!} user={user!} />;
             default:
-                return user?.role === 'student' ? <StudentDashboard data={data} user={user} /> : <FacultyDashboard data={data} user={user} />;
+                return user?.role === 'student' ? <StudentDashboard data={data} user={user} setActiveTab={setActiveTab} /> : <FacultyDashboard data={data} user={user} />;
         }
     };
 
@@ -151,10 +151,10 @@ export default function Dashboard() {
 
                 <nav className="space-y-2 flex-1 overflow-y-auto">
                     <SidebarLink icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'Dashboard'} onClick={() => { setActiveTab('Dashboard'); setIsMobileMenuOpen(false); }} />
-                    <SidebarLink icon={<GraduationCap />} label="Academic" active={activeTab === 'Academic'} onClick={() => { setActiveTab('Academic'); setIsMobileMenuOpen(false); }} />
+                    <SidebarLink icon={<BarChart3 />} label="Attendance" active={activeTab === 'Attendance'} onClick={() => { setActiveTab('Attendance'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<Clock />} label="Timetable" active={activeTab === 'Timetable'} onClick={() => { setActiveTab('Timetable'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<User />} label="Profile" active={activeTab === 'Profile'} onClick={() => { setActiveTab('Profile'); setIsMobileMenuOpen(false); }} />
-                    <SidebarLink icon={<BarChart3 />} label="Attendance" active={activeTab === 'Attendance'} onClick={() => { setActiveTab('Attendance'); setIsMobileMenuOpen(false); }} />
+                    <SidebarLink icon={<GraduationCap />} label="Academic" active={activeTab === 'Academic'} onClick={() => { setActiveTab('Academic'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<FileText />} label="Results" active={activeTab === 'Results'} onClick={() => { setActiveTab('Results'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<BookMarked />} label="Study Materials" active={activeTab === 'Study Materials'} onClick={() => { setActiveTab('Study Materials'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<Calendar />} label="Events" active={activeTab === 'Events'} onClick={() => { setActiveTab('Events'); setIsMobileMenuOpen(false); }} />
@@ -246,7 +246,7 @@ export default function Dashboard() {
                                                         <div className="flex justify-between items-center">
                                                             <div>
                                                                 <p className="font-bold text-[#1F2937] group-hover:text-[#7C3AED]">{s.name}</p>
-                                                                <p className="text-xs text-gray-500">Roll: {s.roll_number} • {s.department}</p>
+                                                                <p className="text-xs text-gray-500">Roll: {s.roll_number} • {s.department} • Sem {s.semester}</p>
                                                             </div>
                                                             <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#7C3AED]" />
                                                         </div>
@@ -299,11 +299,22 @@ export default function Dashboard() {
     );
 }
 
-function StudentDashboard({ data, user }: { data: any, user: any }) {
+function StudentDashboard({ data, user, setActiveTab }: { data: any, user: any, setActiveTab: (t: string) => void }) {
     const { token } = useAuth();
-    const totalAttendanceCount = data?.attendance?.length > 0 
-        ? Math.round(data.attendance.reduce((acc: number, curr: any) => acc + (curr.percentage || 0), 0) / data.attendance.length) 
-        : 0;
+    const [attendanceStats, setAttendanceStats] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (token) {
+            fetch('/api/attendance/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(res => res.json())
+                .then(setAttendanceStats)
+                .catch(console.error);
+        }
+    }, [token]);
+
+    const totalAttended = attendanceStats.reduce((acc, s) => acc + s.presentClasses, 0);
+    const totalConducted = attendanceStats.reduce((acc, s) => acc + s.totalClasses, 0);
+    const totalAttendanceCount = totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0;
 
     const stats = [
         { label: 'CGPA', value: data?.student?.cgpa || '0.0', icon: <GraduationCap className="w-6 h-6 text-purple-500" />, color: 'bg-purple-50' },
@@ -341,6 +352,57 @@ function StudentDashboard({ data, user }: { data: any, user: any }) {
 
     return (
         <>
+            {/* Health & Status Banners */}
+            <div className="space-y-4 mb-10">
+                {user.can_edit_profile === 1 && (
+                    <motion.div 
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="bg-purple-600 p-6 rounded-[32px] text-white flex items-center justify-between shadow-xl shadow-purple-100"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                                <UserCircle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="font-bold">Profile Update Window Open</p>
+                                <p className="text-xs text-purple-100">The administrator has granted you permission to update your details.</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setActiveTab('Profile')}
+                            className="px-6 py-2 bg-white text-purple-600 rounded-xl font-bold text-sm shadow-sm"
+                        >
+                            Update Now
+                        </button>
+                    </motion.div>
+                )}
+
+                {totalAttendanceCount < 75 && (
+                    <motion.div 
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="bg-orange-500 p-6 rounded-[32px] text-white flex items-center justify-between shadow-xl shadow-orange-100"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="font-bold">Low Attendance Warning</p>
+                                <p className="text-xs text-orange-100">Your overall attendance is {totalAttendanceCount}%. You need at least 75% for exam eligibility.</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setActiveTab('Attendance')}
+                            className="px-6 py-2 bg-white text-orange-500 rounded-xl font-bold text-sm shadow-sm"
+                        >
+                            View Details
+                        </button>
+                    </motion.div>
+                )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                 {stats.map((stat, i) => (
                     <motion.div 
@@ -505,7 +567,7 @@ function FacultyDashboard({ data, user }: { data: any, user: any }) {
                                     </div>
                                     <div>
                                         <p className="font-bold text-[#1F2937]">{s.name}</p>
-                                        <p className="text-xs text-[#6B7280]">{s.department}</p>
+                                        <p className="text-xs text-[#6B7280]">{s.department} • Sem {s.semester}</p>
                                     </div>
                                 </div>
                                 <div className="text-right">
@@ -642,7 +704,7 @@ function AttendanceModal({ token }: { token: string }) {
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-purple-500"
                                 >
                                     <option value="">Select Student ({modalFilteredStudents.length})</option>
-                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number})</option>)}
+                                    {modalFilteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.roll_number} - Sem {s.semester})</option>)}
                                 </select>
                             </div>
                             <div>
@@ -2561,14 +2623,36 @@ function LostFoundView({ token, user }: { token: string, user: any }) {
                         <form className="space-y-4" onSubmit={async (e) => {
                             e.preventDefault();
                             const formData = new FormData(e.currentTarget);
-                            const payload = Object.fromEntries(formData.entries());
-                            await fetch('/api/lost-found', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify(payload)
-                            });
-                            setIsReportOpen(false);
-                            window.location.reload();
+                            const file = formData.get('file') as File;
+                            
+                            const submit = async (imageUrl?: string) => {
+                                const payload = {
+                                    type: formData.get('type'),
+                                    itemName: formData.get('itemName'),
+                                    location: formData.get('location'),
+                                    dateReported: formData.get('dateReported'),
+                                    description: formData.get('description'),
+                                    imageUrl: imageUrl || null
+                                };
+                                
+                                await fetch('/api/lost-found', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                    body: JSON.stringify(payload)
+                                });
+                                setIsReportOpen(false);
+                                fetch('/api/lost-found', { headers: { 'Authorization': `Bearer ${token}` } })
+                                    .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                                    .then(setItems);
+                            };
+
+                            if (file && file.size > 0) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => submit(reader.result as string);
+                                reader.readAsDataURL(file);
+                            } else {
+                                await submit();
+                            }
                         }}>
                             <select name="type" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
                                 <option value="lost">I lost something</option>
@@ -2724,7 +2808,7 @@ function LibraryView({ token, user, setActiveTab }: { token: string, user: any, 
                 {(user.role === 'librarian' || user.role === 'admin') && (
                     <div className="flex gap-2">
                         <button onClick={() => setIsScannerOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-2">
-                            <QrCode className="w-4 h-4" /> Scan Book
+                            <QrIcon className="w-4 h-4" /> Scan Book
                         </button>
                         <button onClick={() => setIsAddOpen(true)} className="px-4 py-2 bg-[#7C3AED] text-white rounded-xl text-xs font-bold">Add Book</button>
                         <button onClick={() => updateStatus('open')} className="px-4 py-2 bg-green-100 text-green-600 rounded-xl text-xs font-bold">Open</button>
@@ -3292,7 +3376,7 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                                     <tr key={i} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-8 py-5">
                                             <p className="font-bold text-[#1F2937]">{s.name}</p>
-                                            <p className="text-xs text-[#6B7280]">{s.department}</p>
+                                            <p className="text-xs text-[#6B7280]">{s.department} • Sem {s.semester}</p>
                                         </td>
                                         <td className="px-8 py-5 text-sm text-[#6B7280]">{s.roll_number}</td>
                                         <td className="px-8 py-5 font-bold text-[#7C3AED]">{s.cgpa}</td>
@@ -3304,9 +3388,38 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                                             </span>
                                         </td>
                                         <td className="px-8 py-5">
-                                            <div className="flex gap-4">
-                                                <button onClick={() => setEditingStudent(s)} className="text-xs font-bold text-[#7C3AED]">Update</button>
-                                                <button onClick={() => setAddingFee(s)} className="text-xs font-bold text-orange-500">Add Fee</button>
+                                            <div className="flex items-center gap-4">
+                                                <button onClick={() => setEditingStudent(s)} className="text-xs font-bold text-[#7C3AED] hover:underline">Update</button>
+                                                <button onClick={() => setAddingFee(s)} className="text-xs font-bold text-orange-500 hover:underline">Add Fee</button>
+                                                {s.has_updated_profile === 1 && s.can_edit_profile === 0 && (
+                                                    <button 
+                                                        onClick={async () => {
+                                                            const res = await fetch('/api/admin/students/grant-edit', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                                body: JSON.stringify({ studentId: s.id })
+                                                            });
+                                                            if (res.ok) {
+                                                                alert('Profile editing access granted');
+                                                                setStudents(students.map(st => st.id === s.id ? { ...st, can_edit_profile: 1 } : st));
+                                                            }
+                                                        }}
+                                                        className="flex items-center gap-1 text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-lg uppercase tracking-tighter hover:bg-green-100 transition-colors"
+                                                        title="Unlock Profile Editing"
+                                                    >
+                                                        <Unlock className="w-3 h-3" /> Grant Edit
+                                                    </button>
+                                                )}
+                                                {s.has_updated_profile === 1 && s.can_edit_profile === 1 && (
+                                                    <span className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-tighter opacity-60">
+                                                        <Unlock className="w-3 h-3" /> Editable
+                                                    </span>
+                                                )}
+                                                {s.has_updated_profile === 0 && (
+                                                    <span className="flex items-center gap-1 text-[10px] font-black text-gray-400 bg-gray-100 px-2 py-1 rounded-lg uppercase tracking-tighter opacity-60">
+                                                        <Clock className="w-3 h-3" /> Pending Setup
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -3483,6 +3596,7 @@ function AcademicDashboardView({ token, user, setActiveTab }: { token: string, u
     const [subjects, setSubjects] = useState<any[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [teachers, setTeachers] = useState<any[]>([]);
+    const [attendanceStats, setAttendanceStats] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     
     // Management states
@@ -3507,13 +3621,15 @@ function AcademicDashboardView({ token, user, setActiveTab }: { token: string, u
                 setLoading(false);
             }).catch(console.error);
         } else {
-            fetch('/api/academic/courses', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            })
-            .then(res => res.json())
-            .then(setAcademicData)
-            .catch(console.error)
-            .finally(() => setLoading(false));
+            setLoading(true);
+            Promise.all([
+                fetch('/api/academic/courses', { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()),
+                fetch('/api/attendance/stats', { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json())
+            ]).then(([courses, stats]) => {
+                setAcademicData(courses);
+                setAttendanceStats(stats || []);
+                setLoading(false);
+            }).catch(console.error);
         }
     }, [token, user.role]);
 
@@ -3551,7 +3667,7 @@ function AcademicDashboardView({ token, user, setActiveTab }: { token: string, u
     if (user.role === 'admin') {
         return (
             <div className="space-y-8">
-                <div className="flex gap-4 mb-4">
+                <div className="flex flex-wrap items-center gap-4 mb-4">
                     <button 
                         onClick={() => setDirectoryTab('view')}
                         className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${directoryTab === 'view' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-400 hover:bg-gray-50'}`}
@@ -3570,6 +3686,14 @@ function AcademicDashboardView({ token, user, setActiveTab }: { token: string, u
                     >
                         Master Schedule
                     </button>
+                    {directoryTab === 'schedule' && (
+                        <button 
+                            onClick={() => alert('Global Schedule Freeze Activated. No further modifications allowed without overriding.')}
+                            className="ml-auto px-6 py-2 bg-orange-100 text-orange-600 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-orange-200"
+                        >
+                            <Lock className="w-4 h-4" /> Global Freeze
+                        </button>
+                    )}
                 </div>
 
                 {directoryTab === 'view' && (
@@ -3665,20 +3789,13 @@ function AcademicDashboardView({ token, user, setActiveTab }: { token: string, u
                             <h3 className="text-2xl font-bold mb-2">Master Schedule Control</h3>
                             <p className="text-gray-400 text-sm mb-10 max-w-md">Edit global timetable entries, assign faculty members to specific rooms, and resolve scheduling conflicts in real-time.</p>
                             
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="p-6 bg-white/5 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer" onClick={() => setActiveTab('Timetable')}>
                                     <div className="w-12 h-12 bg-purple-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-purple-500/20">
                                         <Grid className="w-6 h-6 text-white" />
                                     </div>
                                     <h4 className="font-bold mb-1">Open 2D Matrix</h4>
                                     <p className="text-xs text-gray-500">Edit schedule in high-contrast grid mode</p>
-                                </div>
-                                <div className="p-6 bg-white/5 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer">
-                                    <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-orange-500/20">
-                                        <Box className="w-6 h-6 text-white" />
-                                    </div>
-                                    <h4 className="font-bold mb-1">Room Allocation</h4>
-                                    <p className="text-xs text-gray-500">Manage 24 physical learning spaces</p>
                                 </div>
                                 <div className="p-6 bg-white/5 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer" onClick={() => setIsSubjectAssignOpen(true)}>
                                     <div className="w-12 h-12 bg-blue-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/20">
@@ -3837,45 +3954,96 @@ function AcademicDashboardView({ token, user, setActiveTab }: { token: string, u
                         <h2 className="text-3xl font-bold text-[#1F2937]">Academic Dashboard</h2>
                         <p className="text-[#6B7280] mt-1">{academicData?.branch} • Semester {academicData?.semester}</p>
                     </div>
-                    <div className="px-6 py-3 bg-purple-50 rounded-2xl border border-purple-100">
-                        <span className="text-xl font-bold text-[#7C3AED]">{academicData?.courses?.length || 0}</span>
-                        <span className="text-xs font-bold text-purple-400 uppercase tracking-widest ml-2">Total Subjects</span>
+                    <div className="flex gap-4">
+                        {(() => {
+                            const totalAttended = attendanceStats.reduce((acc, s) => acc + s.presentClasses, 0);
+                            const totalConducted = attendanceStats.reduce((acc, s) => acc + s.totalClasses, 0);
+                            const overall = totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0;
+                            return (
+                                <div className={`px-6 py-3 rounded-2xl border flex items-center gap-3 ${overall >= 75 ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${overall >= 75 ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                                        <BarChart3 className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Attendance</p>
+                                        <p className={`text-xl font-black ${overall >= 75 ? 'text-green-600' : 'text-orange-600'}`}>{overall}%</p>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                        <div className="px-6 py-3 bg-purple-50 rounded-2xl border border-purple-100 flex items-center gap-3">
+                            <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center">
+                                <BookOpen className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Subjects</p>
+                                <p className="text-xl font-black text-[#7C3AED]">{academicData?.courses?.length || 0}</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {academicData?.courses?.map((course: any, i: number) => (
-                        <motion.div 
-                            key={i}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: i * 0.05 }}
-                            className="group p-8 bg-gray-50 rounded-[32px] border border-gray-100 hover:bg-[#7C3AED] hover:border-[#7C3AED] transition-all duration-300 hover:shadow-xl hover:shadow-purple-100"
-                        >
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm group-hover:bg-white/20 transition-colors">
-                                    <BookOpen className="w-6 h-6 text-[#7C3AED] group-hover:text-white" />
+                    {academicData?.courses?.map((course: any, i: number) => {
+                        const att = attendanceStats.find(s => s.subjectId === course.id);
+                        const percentage = att ? att.percentage : 0;
+                        const present = att ? att.presentClasses : 0;
+                        const total = att ? att.totalClasses : 0;
+
+                        return (
+                            <motion.div 
+                                key={i}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: i * 0.05 }}
+                                className="group p-8 bg-gray-50 rounded-[32px] border border-gray-100 hover:bg-[#7C3AED] hover:border-[#7C3AED] transition-all duration-300 hover:shadow-xl hover:shadow-purple-100"
+                            >
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm group-hover:bg-white/20 transition-colors">
+                                        <BookOpen className="w-6 h-6 text-[#7C3AED] group-hover:text-white" />
+                                    </div>
+                                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-sm transition-colors ${
+                                        percentage >= 75 ? 'bg-white text-green-600 group-hover:bg-white/20 group-hover:text-white' : 'bg-red-100 text-red-600 group-hover:bg-red-500 group-hover:text-white'
+                                    }`}>
+                                        {percentage}% Attendance
+                                    </div>
                                 </div>
-                                <div className="px-3 py-1 bg-white rounded-full text-[10px] font-bold text-[#7C3AED] uppercase tracking-widest shadow-sm group-hover:bg-white/20 group-hover:text-white transition-colors">
-                                    Credits: {course.credits}
+                                
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2 group-hover:text-purple-200">{course.code}</p>
+                                <h3 className="text-lg font-bold text-[#1F2937] leading-snug group-hover:text-white mb-6 min-h-[56px]">{course.name}</h3>
+                                
+                                <div className="space-y-4 mb-8">
+                                    <div className="flex justify-between text-[10px] font-bold group-hover:text-white/80">
+                                        <span>Progress to Threshold (75%)</span>
+                                        <span>{present}/{total} Classes</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden group-hover:bg-white/10">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${percentage}%` }}
+                                            className={`h-full rounded-full transition-colors ${percentage >= 75 ? 'bg-green-500' : 'bg-red-500'}`}
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                            
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2 group-hover:text-purple-200">{course.code}</p>
-                            <h3 className="text-lg font-bold text-[#1F2937] leading-snug group-hover:text-white mb-6 min-h-[56px]">{course.name}</h3>
-                            
-                            <div className="flex items-center gap-4 pt-6 border-t border-gray-200 group-hover:border-white/20">
-                                <div className="flex -space-x-2">
-                                    {[1, 2, 3].map(j => (
-                                        <div key={j} className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 overflow-hidden group-hover:border-purple-600 transition-colors">
-                                            <img src={`https://api.dicebear.com/7.x/initials/svg?seed=ST${j}`} alt="student" />
-                                        </div>
-                                    ))}
+
+                                <div className="flex items-center justify-between pt-6 border-t border-gray-200 group-hover:border-white/20">
+                                    <div className="flex -space-x-2">
+                                        {[1, 2, 3].map(j => (
+                                            <div key={j} className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 overflow-hidden group-hover:border-purple-600 transition-colors">
+                                                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=ST${j}`} alt="student" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button 
+                                        onClick={() => setActiveTab('Attendance')}
+                                        className="text-[10px] font-bold text-[#7C3AED] group-hover:text-white uppercase tracking-widest hover:underline"
+                                    >
+                                        View Log →
+                                    </button>
                                 </div>
-                                <span className="text-[10px] font-bold text-gray-400 group-hover:text-purple-200 uppercase tracking-widest">+12 Peers</span>
-                            </div>
-                        </motion.div>
-                    ))}
+                            </motion.div>
+                        );
+                    })}
                     {(!academicData?.courses || academicData.courses.length === 0) && (
                         <div className="col-span-full py-20 text-center bg-gray-50 rounded-[40px] border border-dashed border-gray-200">
                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -3956,6 +4124,84 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
     const [filterDept, setFilterDept] = useState('');
     const [filterSem, setFilterSem] = useState('');
     const [historySearch, setHistorySearch] = useState('');
+    const [locks, setLocks] = useState<number[]>([]);
+    const [defaulters, setDefaulters] = useState<any[]>([]);
+    const [trendData, setTrendData] = useState<any[]>([]);
+    const [qrData, setQrData] = useState<{qrToken: string, expiresAt: string} | null>(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+    useEffect(() => {
+        let scanner: any = null;
+        if (isScanning) {
+            // Need a slight delay to ensure the div is mounted
+            const timer = setTimeout(() => {
+                scanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
+                scanner.render(async (decodedText: string) => {
+                    if (user.role === 'student') {
+                        // Student scanning faculty QR
+                        navigator.geolocation.getCurrentPosition(async (pos) => {
+                            const res = await fetch('/api/attendance/qr-scan', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ 
+                                    qrToken: decodedText,
+                                    latitude: pos.coords.latitude,
+                                    longitude: pos.coords.longitude
+                                })
+                            });
+                            if (res.ok) {
+                                alert('Attendance marked successfully!');
+                                setIsScanning(false);
+                                fetch('/api/attendance/stats', { headers: { 'Authorization': `Bearer ${token}` } })
+                                    .then(res => res.json()).then(setStats);
+                            } else {
+                                const err = await res.json();
+                                alert(err.message || 'Verification failed');
+                                setIsScanning(false);
+                            }
+                        }, (err) => {
+                            alert('Geolocation access required for attendance verification');
+                            setIsScanning(false);
+                        });
+                    } else if (user.role === 'faculty') {
+                        // Faculty scanning student QR (Roll Number)
+                        if (!selectedSubject) {
+                            alert('Please select a subject first!');
+                            setIsScanning(false);
+                            if (scanner) scanner.clear();
+                            return;
+                        }
+                        const res = await fetch('/api/faculty/attendance/qr/mark', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ 
+                                rollNumber: decodedText,
+                                subjectId: selectedSubject,
+                                date: selectedDate
+                            })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            alert(`Attendance marked for ${data.studentName} (${decodedText})`);
+                            // Keep scanning for more students? No, let's close or provide feedback.
+                        } else {
+                            const err = await res.json();
+                            alert(err.message || 'Marking failed');
+                        }
+                    }
+                }, (err: any) => {
+                    // console.log(err);
+                });
+            }, 100);
+            return () => {
+                clearTimeout(timer);
+                if (scanner) {
+                    try { scanner.clear(); } catch(e) {}
+                }
+            };
+        }
+    }, [isScanning, token, user.role, selectedSubject, selectedDate]);
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
@@ -3971,6 +4217,15 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
             fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
                 .then(async res => (res.ok ? await safeJson(res) : []) || [])
                 .then(setSubjects);
+            fetch('/api/admin/attendance/locks', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setLocks);
+            fetch('/api/admin/attendance/defaulters', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setDefaulters);
+            fetch('/api/attendance/trends', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setTrendData);
         }
         
         if (user.role === 'student') {
@@ -3995,7 +4250,7 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
             studentId: Number(id),
             status,
             subjectId: selectedSubject,
-            date: new Date().toISOString()
+            date: selectedDate
         }));
 
         const res = await fetch('/api/faculty/attendance/bulk', {
@@ -4012,13 +4267,40 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
 
     if (user.role === 'student') {
         const lowAttendance = stats.filter(s => s.percentage < 75);
+        const totalAttended = stats.reduce((acc, s) => acc + s.presentClasses, 0);
+        const totalConducted = stats.reduce((acc, s) => acc + s.totalClasses, 0);
+        const overall = totalConducted > 0 ? (totalAttended / totalConducted) : 0;
+        
+        let forecastMsg = "";
+        let forecastColor = "text-green-400";
+        
+        if (overall < 0.75) {
+            const needed = Math.ceil((0.75 * totalConducted - totalAttended) / 0.25);
+            forecastMsg = `Attend next ${needed} classes consecutively to reach 75%.`;
+            forecastColor = "text-orange-400";
+        } else {
+            const canMiss = Math.floor((totalAttended / 0.75) - totalConducted);
+            forecastMsg = canMiss > 0 
+                ? `Safe to skip ${canMiss} classes while staying above 75%.` 
+                : `On the edge! Don't miss any more classes.`;
+            forecastColor = "text-green-400";
+        }
+
         return (
             <div className="space-y-8">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 shadow-sm">
-                        <ArrowLeft className="w-5 h-5 text-[#7C3AED]" />
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => setActiveTab('Dashboard')} className="p-2 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 shadow-sm">
+                            <ArrowLeft className="w-5 h-5 text-[#7C3AED]" />
+                        </button>
+                        <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Portal</h2>
+                    </div>
+                    <button 
+                        onClick={() => setIsScanning(true)}
+                        className="px-6 py-2.5 bg-purple-600 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-purple-200"
+                    >
+                        <QrIcon className="w-5 h-5" /> Scan QR Check-in
                     </button>
-                    <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Portal</h2>
                 </div>
 
                 {lowAttendance.length > 0 && (
@@ -4034,6 +4316,75 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                         </div>
                     </motion.div>
                 )}
+
+                <div className="grid lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
+                        <div className="flex justify-between items-center mb-10">
+                            <div>
+                                <h3 className="text-xl font-bold text-[#1F2937] mb-1">Weekly Trends</h3>
+                                <p className="text-sm text-secondary">Attendance patterns for last 7 active days</p>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs font-bold">
+                                <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500" /> Attendance</span>
+                                <span className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-gray-200" /> Goal (85%)</span>
+                            </div>
+                        </div>
+                        <div className="h-64 cursor-crosshair">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={trendData.length > 0 ? trendData : [{name: 'Mon', attendance: 0, expected: 85}]}>
+                                    <defs>
+                                        <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.1}/>
+                                            <stop offset="95%" stopColor="#7C3AED" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9CA3AF'}} dy={10} />
+                                    <YAxis hide domain={[0, 100]} />
+                                    <Tooltip />
+                                    <Area type="monotone" dataKey="attendance" stroke="#7C3AED" strokeWidth={3} fillOpacity={1} fill="url(#colorAtt)" />
+                                    <Line type="monotone" dataKey="expected" stroke="#E5E7EB" strokeDasharray="5 5" dot={false} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                    <div className="bg-[#111827] p-10 rounded-[40px] text-white flex flex-col justify-between overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+                        <div>
+                            <p className="text-purple-400 font-bold text-xs uppercase tracking-widest mb-4">Overall Score</p>
+                            <h4 className="text-6xl font-black mb-2">{Math.round(overall * 100)}%</h4>
+                            <p className="text-sm text-gray-400">Total Classes attended: {totalAttended} of {totalConducted}</p>
+                            
+                            <div className="mt-8 p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-purple-500/20 rounded-xl flex items-center justify-center">
+                                        <Sparkles className="w-4 h-4 text-purple-400" />
+                                    </div>
+                                    <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Refined Forecast</p>
+                                </div>
+                                <p className={`text-sm font-medium leading-relaxed ${forecastColor}`}>
+                                    {forecastMsg}
+                                </p>
+                                <div className="pt-2">
+                                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${Math.round(overall * 100)}%` }}
+                                            className={`h-full rounded-full ${overall >= 0.75 ? 'bg-green-400' : 'bg-orange-400'}`}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 p-4 bg-white/5 rounded-2xl border border-white/10">
+                                <p className="text-xs text-gray-400 mb-1">Eligibility Status</p>
+                                <p className={`font-bold ${overall >= 0.75 ? 'text-green-400' : 'text-orange-400'}`}>
+                                    {overall >= 0.75 ? 'Eligible for Exams' : 'Low Attendance Warning'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {stats.map((s, i) => (
@@ -4165,9 +4516,20 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
             </div>
 
             <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 p-8">
-                <div className="flex items-center gap-8 mb-8 border-b border-gray-50 pb-4">
-                    <button onClick={() => setActiveSubTab('stats')} className={`text-sm font-bold uppercase tracking-widest ${activeSubTab === 'stats' ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>Class Analytics</button>
-                    <button onClick={() => setActiveSubTab('history')} className={`text-sm font-bold uppercase tracking-widest ${activeSubTab === 'history' ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>History</button>
+                <div className="flex items-center gap-8 mb-8 border-b border-gray-50 pb-4 overflow-x-auto scrollbar-hide">
+                    <button onClick={() => setActiveSubTab('stats')} className={`whitespace-nowrap text-sm font-bold uppercase tracking-widest ${activeSubTab === 'stats' ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>Class Analytics</button>
+                    <button onClick={() => setActiveSubTab('history')} className={`whitespace-nowrap text-sm font-bold uppercase tracking-widest ${activeSubTab === 'history' ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>History</button>
+                    {(user.role === 'admin' || user.role === 'faculty') && (
+                        <>
+                            <button onClick={() => setActiveSubTab('defaulters' as any)} className={`whitespace-nowrap text-sm font-bold uppercase tracking-widest ${activeSubTab === 'defaulters' as any ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>Defaulter Tool</button>
+                            <button 
+                                onClick={() => setIsScanning(true)} 
+                                className="whitespace-nowrap text-sm font-bold uppercase tracking-widest text-[#7C3AED] pb-4 flex items-center gap-2"
+                            >
+                                <QrIcon className="w-4 h-4" /> QR Scanner Mode
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {activeSubTab === 'stats' && (
@@ -4175,10 +4537,50 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                         {subjects.map((sub, i) => {
                             const stats = subjectStats.find(s => s.subject_id === sub.id);
                             const avg = stats ? stats.average : 0;
+                            const isLocked = locks.includes(sub.id);
                             return (
-                                <div key={i} className="p-6 bg-gray-50 rounded-3xl">
+                                <div key={i} className="p-6 bg-gray-50 rounded-3xl relative group">
+                                    <div className="absolute top-4 right-4 flex gap-2">
+                                        <button 
+                                            onClick={async () => {
+                                                const res = await fetch('/api/attendance/qr-generate', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                    body: JSON.stringify({ subjectId: sub.id })
+                                                });
+                                                if (res.ok) {
+                                                    const data = await res.json();
+                                                    setQrData(data);
+                                                    setSelectedSubject(sub.id);
+                                                }
+                                            }}
+                                            className="w-8 h-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-purple-600 shadow-sm transition-all"
+                                            title="Generate QR"
+                                        >
+                                            <QrIcon className="w-4 h-4" />
+                                        </button>
+                                        {user.role === 'admin' && (
+                                            <button 
+                                                onClick={async () => {
+                                                    const action = isLocked ? 'unlock' : 'lock';
+                                                    const res = await fetch(`/api/admin/attendance/${action}`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                        body: JSON.stringify({ subjectId: sub.id })
+                                                    });
+                                                    if (res.ok) {
+                                                        setLocks(isLocked ? locks.filter(id => id !== sub.id) : [...locks, sub.id]);
+                                                    }
+                                                }}
+                                                className={`w-8 h-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center shadow-sm transition-all ${isLocked ? 'text-orange-500' : 'text-gray-400 hover:text-green-600'}`}
+                                                title={isLocked ? 'Unlock' : 'Lock'}
+                                            >
+                                                {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                                            </button>
+                                        )}
+                                    </div>
                                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{sub.code}</p>
-                                    <h4 className="font-bold text-xl mb-4 truncate">{sub.name}</h4>
+                                    <h4 className="font-bold text-xl mb-4 truncate pr-16">{sub.name}</h4>
                                     <div className="flex justify-between items-center text-sm font-bold">
                                         <span className={`${avg >= 75 ? 'text-green-600' : 'text-red-600'}`}>Avg: {avg}%</span>
                                         <span className="text-secondary">{students.filter(s => s.department === sub.department && s.semester === sub.semester).length} Students</span>
@@ -4186,6 +4588,58 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+
+                {activeSubTab === ('defaulters' as any) && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h4 className="font-bold text-[#1F2937]">Critical Defaulters List</h4>
+                                <p className="text-sm text-secondary">Showing students with less than 75% attendance</p>
+                            </div>
+                            <button className="px-6 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-red-100">
+                                <Send className="w-4 h-4" /> Notify Guardians
+                            </button>
+                        </div>
+                        <div className="overflow-x-auto bg-red-50/30 rounded-3xl border border-red-100/50">
+                            <table className="w-full text-left">
+                                <thead className="text-[10px] uppercase font-bold text-red-400 border-b border-red-100 px-8">
+                                    <tr>
+                                        <th className="px-8 py-4">Student</th>
+                                        <th className="px-8 py-4">Subject</th>
+                                        <th className="px-8 py-4">Percentage</th>
+                                        <th className="px-8 py-4">Classes Missed</th>
+                                        <th className="px-8 py-4 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-red-100/30">
+                                    {defaulters.map((d, i) => (
+                                        <tr key={i} className="hover:bg-red-50/50">
+                                            <td className="px-8 py-4">
+                                                <div className="font-bold text-sm text-gray-900">{d.name}</div>
+                                                <div className="text-[10px] text-gray-400">{d.roll_number} • Sem {d.semester}</div>
+                                            </td>
+                                            <td className="px-8 py-4 text-sm text-gray-600">{d.subject_name}</td>
+                                            <td className="px-8 py-4">
+                                                <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-bold">
+                                                    {d.percentage}%
+                                                </span>
+                                            </td>
+                                            <td className="px-8 py-4 text-sm text-gray-500">{d.total_classes - d.present_classes} Classes</td>
+                                            <td className="px-8 py-4 text-right">
+                                                <button className="text-[10px] font-bold uppercase text-red-600 hover:underline">Warn Student</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {defaulters.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="py-20 text-center text-gray-400 font-medium">No defaulters identified in current batch</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
 
@@ -4283,31 +4737,69 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                         </button>
                         <h3 className="text-2xl font-bold mb-8">Mark Daily Attendance</h3>
                         
-                        <div className="grid md:grid-cols-3 gap-6 mb-8">
+                        <div className="grid md:grid-cols-5 gap-6 mb-8">
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">1. Subject</label>
+                                <label className="text-xs font-bold text-gray-400 uppercase">1. Date</label>
+                                <input 
+                                    type="date"
+                                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium text-sm"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">2. Subject</label>
                                 <select 
-                                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium"
+                                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium text-sm"
                                     onChange={(e) => setSelectedSubject(Number(e.target.value))}
                                 >
                                     <option value="">Select Subject...</option>
-                                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    {subjects.map(s => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">2. Section</label>
-                                <select className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium">
+                                <label className="text-xs font-bold text-gray-400 uppercase">3. Section</label>
+                                <select className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium text-sm text-gray-400">
                                     <option>Section A</option>
                                     <option>Section B</option>
                                 </select>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 uppercase">3. Smart Bulk</label>
+                                <label className="text-xs font-bold text-gray-400 uppercase">4. Smart Bulk</label>
                                 <div className="flex gap-2">
-                                    <button onClick={() => handleBulkMark('present')} className="flex-1 py-3 bg-green-50 text-green-600 rounded-xl font-bold text-xs">ALL PRESENT</button>
-                                    <button onClick={() => handleBulkMark('absent')} className="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs">ALL ABSENT</button>
-                                    <button onClick={() => handleBulkMark('no_class')} className="flex-1 py-3 bg-gray-50 text-gray-500 rounded-xl font-bold text-xs">NO CLASS</button>
+                                    <button onClick={() => handleBulkMark('present')} className="flex-1 py-3 bg-green-50 text-green-600 rounded-xl font-bold text-[10px]">ALL PRESENT</button>
+                                    <button onClick={() => handleBulkMark('absent')} className="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-[10px]">ALL ABSENT</button>
                                 </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">5. Term Lock</label>
+                                <button 
+                                    onClick={async () => {
+                                        if (!selectedSubject) return alert('Select subject');
+                                        const isLocked = locks.includes(selectedSubject);
+                                        const endpoint = isLocked ? '/api/admin/attendance/unlock' : '/api/admin/attendance/lock';
+                                        const res = await fetch(endpoint, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                            body: JSON.stringify({ subjectId: selectedSubject })
+                                        });
+                                        if (res.ok) {
+                                            alert(`Subject attendance ${isLocked ? 'unlocked' : 'locked'} successfully`);
+                                            setLocks(isLocked ? locks.filter(id => id !== selectedSubject) : [...locks, selectedSubject]);
+                                        }
+                                    }}
+                                    className={`w-full py-3 rounded-xl font-bold text-[10px] transition-all flex items-center justify-center gap-2 ${
+                                        selectedSubject && locks.includes(selectedSubject) 
+                                            ? 'bg-red-50 text-red-600' 
+                                            : 'bg-gray-50 text-gray-400'
+                                    }`}
+                                >
+                                    {selectedSubject && locks.includes(selectedSubject) ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                                    {selectedSubject && locks.includes(selectedSubject) ? 'UNLOCK' : 'LOCK'}
+                                </button>
                             </div>
                         </div>
 
@@ -4324,7 +4816,7 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                                     {students.map((s, i) => (
                                         <tr key={i} className="border-t border-gray-100">
                                             <td className="py-4 font-bold">{s.name}</td>
-                                            <td className="py-4 text-xs text-secondary">{s.roll_number}</td>
+                                            <td className="py-4 text-xs text-secondary">{s.roll_number} • Sem {s.semester}</td>
                                             <td className="py-4">
                                                 <div className="flex justify-center gap-2">
                                                     {['present', 'absent', 'no_class'].map(status => (
@@ -4351,6 +4843,69 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                         <div className="flex gap-4">
                             <button onClick={handleMarkAttendance} className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-xl shadow-purple-200">Submit Attendance</button>
                             <button onClick={() => setIsMarking(false)} className="px-8 py-4 bg-gray-50 text-gray-500 rounded-2xl font-bold">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isScanning && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <button onClick={() => setIsScanning(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                            <X className="w-6 h-6" />
+                        </button>
+                        <div className="text-center mb-8">
+                            <div className="w-20 h-20 bg-purple-100 rounded-[30px] flex items-center justify-center mx-auto mb-6">
+                                <QrIcon className="w-10 h-10 text-purple-600" />
+                            </div>
+                            <h3 className="text-2xl font-bold mb-2">
+                                {user.role === 'faculty' ? 'Scan Student ID' : 'Scan Classroom QR'}
+                            </h3>
+                            <p className="text-sm text-secondary">
+                                {user.role === 'faculty' 
+                                    ? 'Scan the student\'s QR code to instantly mark them present' 
+                                    : 'Point your camera at the QR code displayed by the faculty'}
+                            </p>
+                            {user.role === 'faculty' && !selectedSubject && (
+                                <p className="mt-4 text-xs font-bold text-orange-600 uppercase tracking-widest">
+                                    ⚠️ Select a subject in "Mark Attendance" first
+                                </p>
+                            )}
+                        </div>
+                        
+                        <div id="qr-reader" className="overflow-hidden rounded-3xl border-4 border-purple-50 aspect-square mb-8">
+                            {/* QR Scanner mounts here */}
+                        </div>
+                        <button onClick={() => setIsScanning(false)} className="w-full py-4 bg-gray-50 text-gray-500 rounded-2xl font-bold">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            {qrData && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-sm rounded-[40px] p-10 relative">
+                        <button onClick={() => setQrData(null)} className="absolute top-8 right-8 text-gray-400">
+                            <X className="w-6 h-6" />
+                        </button>
+                        <div className="text-center">
+                            <h3 className="text-xl font-bold mb-1">Classroom Check-in</h3>
+                            <p className="text-xs text-secondary mb-8">Students scan this to mark attendance</p>
+                            
+                            <div className="p-4 bg-white border-8 border-purple-50 rounded-[40px] shadow-inner mb-8">
+                                <div className="aspect-square bg-gray-50 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-[30px]">
+                                    <div className="text-center p-6">
+                                        <QrIcon className="w-16 h-16 text-purple-200 mx-auto mb-4" />
+                                        <p className="text-[10px] font-mono text-gray-400 break-all">{qrData.qrToken}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-center gap-2 mb-8">
+                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                <p className="text-xs font-bold text-green-600">Active • Expires in 5m</p>
+                            </div>
+
+                            <button onClick={() => setQrData(null)} className="w-full py-4 bg-[#111827] text-white rounded-2xl font-bold">Close Portal</button>
                         </div>
                     </div>
                 </div>
@@ -4749,6 +5304,8 @@ function ResultsView({ token, user, setActiveTab }: { token: string, user: any, 
 function ProfileView({ token, user }: { token: string, user: any }) {
     const [profile, setProfile] = useState<any>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetch('/api/student/profile', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -4758,18 +5315,52 @@ function ProfileView({ token, user }: { token: string, user: any }) {
 
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsUpdating(true);
         const formData = new FormData(e.currentTarget as HTMLFormElement);
         const payload = Object.fromEntries(formData.entries());
         
-        const res = await fetch('/api/student/profile/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-            setProfile({ ...profile, ...payload });
-            setIsEditing(false);
+        try {
+            const res = await fetch('/api/student/profile/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            if (res.ok) {
+                setProfile({ ...profile, ...payload });
+                setIsEditing(false);
+            } else {
+                alert(result.message || 'Error updating profile');
+            }
+        } catch (err) {
+            alert('Failed to update profile');
+        } finally {
+            setIsUpdating(false);
         }
+    };
+
+    const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // In a real app, we'd upload to S3/Firebase. Here we simulate with a data URL.
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const avatarUrl = reader.result as string;
+            try {
+                const res = await fetch('/api/student/profile/avatar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ avatarUrl })
+                });
+                if (res.ok) {
+                    setProfile({ ...profile, avatar_url: avatarUrl });
+                }
+            } catch (err) {
+                alert('Failed to upload avatar');
+            }
+        };
+        reader.readAsDataURL(file);
     };
 
     if (!profile) return (
@@ -4780,15 +5371,67 @@ function ProfileView({ token, user }: { token: string, user: any }) {
     );
 
     const isStudent = profile.role === 'student';
+    const isLocked = isStudent && profile.has_updated_profile === 1 && profile.can_edit_profile === 0;
 
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-20">
+            {/* Status Banner */}
+            {isStudent && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex items-center gap-4 px-8 py-4 rounded-[32px] border ${
+                        isLocked 
+                            ? 'bg-orange-50 border-orange-100 text-orange-700' 
+                            : 'bg-green-50 border-green-100 text-green-700'
+                    }`}
+                >
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isLocked ? 'bg-orange-100' : 'bg-green-100'}`}>
+                        {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+                    </div>
+                    <div>
+                        <p className="font-bold text-sm">Profile Status: {isLocked ? 'Locked' : 'Editable'}</p>
+                        <p className="text-xs opacity-80">
+                            {isLocked 
+                                ? 'Your profile is locked after the initial update. Contact admin for further changes.' 
+                                : profile.has_updated_profile 
+                                    ? 'Administrative permission granted for editing.' 
+                                    : 'Please complete your profile configuration. This can only be done once.'}
+                        </p>
+                    </div>
+                </motion.div>
+            )}
+
             {/* Header Card */}
             <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32" />
                 <div className="relative flex flex-col md:flex-row items-center gap-8">
-                    <div className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-purple-200">
-                        {profile.name[0]}
+                    <div className="relative group">
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            accept="image/*" 
+                            onChange={handleAvatarChange} 
+                        />
+                        <div 
+                            className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-purple-200 overflow-hidden cursor-pointer"
+                            onClick={() => !isLocked && fileInputRef.current?.click()}
+                        >
+                            {profile.avatar_url ? (
+                                <img src={profile.avatar_url} alt={profile.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                                profile.name[0]
+                            )}
+                        </div>
+                        {isStudent && !isLocked && (
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white rounded-[40px]"
+                            >
+                                <Camera className="w-6 h-6" />
+                            </button>
+                        )}
                     </div>
                     <div className="text-center md:text-left flex-1">
                         <div className="flex flex-wrap items-center gap-3 mb-2 justify-center md:justify-start">
@@ -4804,8 +5447,14 @@ function ProfileView({ token, user }: { token: string, user: any }) {
                             <div className="flex gap-4 mt-6 justify-center md:justify-start">
                                 <button 
                                     onClick={() => setIsEditing(true)}
-                                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl text-sm font-bold hover:bg-[#6D28D9] transition-all shadow-lg shadow-purple-100"
+                                    disabled={isLocked}
+                                    className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                                        isLocked 
+                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                            : 'bg-[#7C3AED] text-white hover:bg-[#6D28D9] shadow-lg shadow-purple-100'
+                                    }`}
                                 >
+                                    {isLocked ? <Lock className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
                                     Edit Profile
                                 </button>
                             </div>
@@ -4919,6 +5568,7 @@ function ProfileView({ token, user }: { token: string, user: any }) {
                         <h3 className="text-2xl font-bold mb-8">Update Profile Information</h3>
                         <form className="space-y-6" onSubmit={handleUpdate}>
                             <div className="grid md:grid-cols-2 gap-6">
+                                <EditField label="Full Name" name="name" defaultValue={profile.name} />
                                 <EditField label="Phone Number" name="contact" defaultValue={profile.contact} />
                                 <EditField label="Date of Birth" name="dob" type="date" defaultValue={profile.dob} />
                                 <EditField label="Gender" name="gender" type="select" options={['Male', 'Female', 'Other']} defaultValue={profile.gender} />
@@ -4951,6 +5601,7 @@ function ProfileView({ token, user }: { token: string, user: any }) {
 function AdminProfileView({ token, setActiveTab }: { token: string, setActiveTab: (tab: string) => void }) {
     const [profile, setProfile] = useState<any>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetch('/api/admin/profile', { headers: { 'Authorization': `Bearer ${token}` } })
@@ -4975,6 +5626,29 @@ function AdminProfileView({ token, setActiveTab }: { token: string, setActiveTab
         }
     };
 
+    const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const avatarUrl = reader.result as string;
+            try {
+                const res = await fetch('/api/student/profile/avatar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ avatarUrl })
+                });
+                if (res.ok) {
+                    setProfile({ ...profile, avatar_url: avatarUrl });
+                }
+            } catch (err) {
+                alert('Failed to upload avatar');
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
     if (!profile) return <div className="p-8 text-center">Loading Admin Profile...</div>;
 
     return (
@@ -4982,8 +5656,30 @@ function AdminProfileView({ token, setActiveTab }: { token: string, setActiveTab
             <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-purple-50 rounded-full -mr-32 -mt-32" />
                 <div className="relative flex flex-col md:flex-row items-center gap-8">
-                    <div className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-purple-200">
-                        {profile.name[0]}
+                    <div className="relative group">
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            accept="image/*" 
+                            onChange={handleAvatarChange} 
+                        />
+                        <div 
+                            className="w-32 h-32 bg-[#7C3AED] rounded-[40px] flex items-center justify-center text-white text-4xl font-bold shadow-xl shadow-purple-200 overflow-hidden cursor-pointer"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {profile.avatar_url ? (
+                                <img src={profile.avatar_url} alt={profile.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                                profile.name[0]
+                            )}
+                        </div>
+                        <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white rounded-[40px]"
+                        >
+                            <Camera className="w-6 h-6" />
+                        </button>
                     </div>
                     <div className="text-center md:text-left flex-1">
                         <div className="flex flex-wrap items-center gap-3 mb-2 justify-center md:justify-start">
@@ -5534,7 +6230,7 @@ function BookScannerView({ token, onSuccess }: { token: string, onSuccess?: () =
         <div className="max-w-2xl mx-auto space-y-8 pb-20">
             <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50 text-center">
                 <div className="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                    <QrCode className="w-10 h-10 text-[#7C3AED]" />
+                    <QrIcon className="w-10 h-10 text-[#7C3AED]" />
                 </div>
                 <h2 className="text-2xl font-bold text-[#1F2937] mb-2">Book Explorer</h2>
                 <p className="text-[#6B7280] mb-8 text-sm px-10">Search by title, author, or scan ISBN barcode.</p>
