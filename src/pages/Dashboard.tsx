@@ -5,8 +5,8 @@ import {
     LayoutDashboard, BookOpen, Calendar, Search, CreditCard, 
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
     ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText,
-    MapPin, Phone, Award, QrCode as QrIcon, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle, X, Camera, FileUp,
-    Library, Trash2, Home, AlertTriangle, Menu, Edit, Grid, Box, Filter, Save, Lock, Unlock, Send
+    MapPin, Phone, Award, QrCode as QrIcon, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle, X, Camera, FileUp, Sparkles,
+    Library, Trash2, Home, AlertTriangle, Menu, Edit, Grid, Box, Filter, Save, Lock, Unlock, Send, MessageSquare, MoreHorizontal, Video, ExternalLink
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../context/AuthContext';
@@ -101,7 +101,7 @@ export default function Dashboard() {
             case 'Admin Panel':
                 return user?.role === 'admin' ? <AdminPanelView token={token!} setActiveTab={setActiveTab} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
             case 'Alumni':
-                return <AlumniView token={token!} user={user!} />;
+                return <AlumniHub token={token!} user={user!} />;
             case 'Book Scanner':
                 return <BookScannerView token={token!} />;
             case 'Admin Profile':
@@ -159,7 +159,7 @@ export default function Dashboard() {
                     <SidebarLink icon={<BookMarked />} label="Study Materials" active={activeTab === 'Study Materials'} onClick={() => { setActiveTab('Study Materials'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<Calendar />} label="Events" active={activeTab === 'Events'} onClick={() => { setActiveTab('Events'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<Search />} label="Lost & Found" active={activeTab === 'Lost & Found'} onClick={() => { setActiveTab('Lost & Found'); setIsMobileMenuOpen(false); }} />
-                    <SidebarLink icon={<Award />} label="Alumni" active={activeTab === 'Alumni'} onClick={() => { setActiveTab('Alumni'); setIsMobileMenuOpen(false); }} />
+                    <SidebarLink icon={<Award />} label="Alumni Hub" active={activeTab === 'Alumni'} onClick={() => { setActiveTab('Alumni'); setIsMobileMenuOpen(false); }} />
                     <SidebarLink icon={<BookOpen />} label="Library" active={activeTab === 'Library'} onClick={() => { setActiveTab('Library'); setIsMobileMenuOpen(false); }} />
                     {(user?.role === 'student' || user?.role === 'admin') && (
                         <SidebarLink icon={<CreditCard />} label="Fees" active={activeTab === 'Fees'} onClick={() => { setActiveTab('Fees'); setIsMobileMenuOpen(false); }} />
@@ -1855,6 +1855,8 @@ function TimetableView({ token, user, data }: { token: string, user: any, data: 
     const [isGenerationOpen, setIsGenerationOpen] = useState(false);
     const [isAddEntryOpen, setIsAddEntryOpen] = useState(false);
     const [isSubstitutionOpen, setIsSubstitutionOpen] = useState(false);
+    const [isSlotDetailsOpen, setIsSlotDetailsOpen] = useState(false);
+    const [currentSlotEntries, setCurrentSlotEntries] = useState<any[]>([]);
     const [selectedEntry, setSelectedEntry] = useState<any>(null);
     const [preSelectedSlot, setPreSelectedSlot] = useState<any>(null);
     const [facultyList, setFacultyList] = useState<any[]>([]);
@@ -2206,7 +2208,10 @@ function TimetableView({ token, user, data }: { token: string, user: any, data: 
                                                                         } ${isCurrent ? 'ring-2 ring-purple-400 bg-white' : ''} ${entry.is_substitution ? 'ring-2 ring-blue-400' : ''}`}
                                                                         style={{ zIndex: 10 - idx }}
                                                                         onClick={() => {
-                                                                            if (user.role === 'admin' || user.role === 'faculty') {
+                                                                            if (slotEntries.length > 1) {
+                                                                                setCurrentSlotEntries(slotEntries);
+                                                                                setIsSlotDetailsOpen(true);
+                                                                            } else if (user.role === 'admin' || user.role === 'faculty') {
                                                                                 setSelectedEntry(entry);
                                                                                 setIsSubstitutionOpen(true);
                                                                             }
@@ -2335,6 +2340,95 @@ function TimetableView({ token, user, data }: { token: string, user: any, data: 
             )}
 
             {/* Modals */}
+            {isSlotDetailsOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xl z-[150] flex items-center justify-center p-6 overflow-y-auto">
+                    <motion.div 
+                        initial={{ scale: 0.9, opacity: 0 }} 
+                        animate={{ scale: 1, opacity: 1 }} 
+                        className="bg-gray-50/50 w-full max-w-5xl rounded-[40px] p-10 min-h-[500px] relative"
+                    >
+                        <button 
+                            onClick={() => setIsSlotDetailsOpen(false)} 
+                            className="absolute top-8 right-8 p-3 bg-white text-gray-400 hover:text-gray-600 rounded-full shadow-lg transition-all z-[160]"
+                        >
+                            <X className="w-6 h-6" />
+                        </button>
+
+                        <div className="text-center mb-12">
+                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-100/50 rounded-full text-purple-600 font-bold text-xs mb-4">
+                                <Sparkles className="w-3 h-3" />
+                                {currentSlotEntries[0]?.day} • Period {currentSlotEntries[0]?.period_number}
+                            </div>
+                            <h3 className="text-4xl font-black text-[#1F2937] tracking-tight">Multiple Sessions Detected</h3>
+                            <p className="text-sm text-gray-500 font-medium mt-2">Pick a class card to manage its details</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[60vh] overflow-y-auto p-4 custom-scrollbar">
+                            {currentSlotEntries.map((entry, idx) => (
+                                <motion.div
+                                    key={entry.id}
+                                    initial={{ y: 50, opacity: 0, rotateY: 90 }}
+                                    animate={{ y: 0, opacity: 1, rotateY: 0 }}
+                                    transition={{ delay: idx * 0.1, type: "spring", stiffness: 100 }}
+                                    whileHover={{ scale: 1.03, y: -5 }}
+                                    className="bg-white rounded-[32px] p-6 shadow-xl border border-gray-100 flex flex-col justify-between group cursor-pointer relative overflow-hidden"
+                                    onClick={() => {
+                                        setSelectedEntry(entry);
+                                        setIsSubstitutionOpen(true);
+                                        setIsSlotDetailsOpen(false);
+                                    }}
+                                >
+                                    <div className="absolute top-0 right-0 p-4">
+                                        <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 group-hover:bg-purple-50 group-hover:text-purple-500 transition-all">
+                                            <ChevronRight className="w-4 h-4" />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                                                entry.room_type === 'lab' ? 'bg-orange-100 text-orange-600' : 'bg-purple-100 text-[#7C3AED]'
+                                            }`}>
+                                                {entry.subject_code}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-gray-400">
+                                                S{entry.semester}{entry.section}
+                                            </span>
+                                        </div>
+                                        <h4 className="text-lg font-bold text-[#1F2937] leading-tight mb-4 group-hover:text-purple-600 transition-colors">
+                                            {entry.subject_name}
+                                        </h4>
+                                    </div>
+
+                                    <div className="space-y-3 pt-4 border-t border-gray-50">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center">
+                                                <User className="w-4 h-4 text-gray-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Faculty</p>
+                                                <p className="text-sm font-bold text-gray-700">{entry.faculty_name}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center">
+                                                <Home className="w-4 h-4 text-gray-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Location</p>
+                                                <p className="text-sm font-bold text-gray-700">{entry.room_name}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-indigo-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500" />
+                                </motion.div>
+                            ))}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
             {isAddEntryOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
                     <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl relative">
@@ -3173,13 +3267,15 @@ function LibrarianDashboard({ token }: { token: string }) {
 function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: (tab: string) => void }) {
     const [students, setStudents] = useState<any[]>([]);
     const [teachers, setTeachers] = useState<any[]>([]);
-    const [directoryTab, setDirectoryTab] = useState<'students' | 'faculty'>('students');
+    const [directoryTab, setDirectoryTab] = useState<'students' | 'faculty' | 'alumni'>('students');
+    const [alumni, setAlumni] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDept, setFilterDept] = useState('');
     const [filterSem, setFilterSem] = useState('');
     const [sortBy, setSortBy] = useState<'name' | 'roll_number' | 'cgpa' | 'department' | 'semester'>('name');
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isAddFacultyOpen, setIsAddFacultyOpen] = useState(false);
+    const [isAddAlumniOpen, setIsAddAlumniOpen] = useState(false);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState<any>(null);
     const [addingFee, setAddingFee] = useState<any>(null);
@@ -3191,6 +3287,9 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
         fetch('/api/admin/faculty', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(async res => (res.ok ? await safeJson(res) : []) || [])
             .then(setTeachers);
+        fetch('/api/admin/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(async res => (res.ok ? await safeJson(res) : []) || [])
+            .then(setAlumni);
     }, [token]);
 
     const handleUpdateStudent = async (e: React.FormEvent) => {
@@ -3266,16 +3365,22 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                 >
                     Faculty ({teachers.length})
                 </button>
+                <button 
+                    onClick={() => setDirectoryTab('alumni')}
+                    className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${directoryTab === 'alumni' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-400 hover:bg-gray-50'}`}
+                >
+                    Alumni Hub ({alumni.length})
+                </button>
             </div>
 
             <div className="bg-white rounded-[40px] shadow-sm border border-gray-50 overflow-hidden">
                 <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div className="flex flex-col gap-1">
                         <h2 className="text-xl font-bold text-[#1F2937]">
-                            {directoryTab === 'students' ? 'Student Directory' : 'Faculty Directory'}
+                            {directoryTab === 'students' ? 'Student Directory' : directoryTab === 'faculty' ? 'Faculty Directory' : 'Alumni Network Registry'}
                         </h2>
                         <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">
-                            {directoryTab === 'students' ? 'Manage all registered students' : 'Manage faculty members'}
+                            {directoryTab === 'students' ? 'Manage all registered students' : directoryTab === 'faculty' ? 'Manage faculty members' : 'Verify and manage alumni profiles'}
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-4 w-full md:w-auto">
@@ -3347,13 +3452,21 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                                     Add Student
                                 </motion.button>
                             </>
-                        ) : (
+                        ) : directoryTab === 'faculty' ? (
                             <motion.button 
                                 whileHover={{ scale: 1.05 }}
                                 onClick={() => setIsAddFacultyOpen(true)} 
                                 className="px-6 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-green-100"
                             >
                                 Add Faculty
+                            </motion.button>
+                        ) : (
+                            <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                onClick={() => setIsAddAlumniOpen(true)} 
+                                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-100"
+                            >
+                                Add Alumnus
                             </motion.button>
                         )}
                     </div>
@@ -3426,7 +3539,7 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                                 ))}
                             </tbody>
                         </table>
-                    ) : (
+                    ) : directoryTab === 'faculty' ? (
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
                                 <tr>
@@ -3445,9 +3558,138 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                                 ))}
                             </tbody>
                         </table>
+                    ) : (
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-[10px] uppercase tracking-widest text-[#9CA3AF] font-bold">
+                                <tr>
+                                    <th className="px-8 py-4">Alumnus</th>
+                                    <th className="px-8 py-4">Current Professional Info</th>
+                                    <th className="px-8 py-4">Verification</th>
+                                    <th className="px-8 py-4">Status</th>
+                                    <th className="px-8 py-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {alumni.filter(a => 
+                                    !searchTerm || a.name.toLowerCase().includes(searchTerm.toLowerCase()) || a.company?.toLowerCase().includes(searchTerm.toLowerCase())
+                                ).map((a, i) => (
+                                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-8 py-5">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center font-bold text-purple-600 overflow-hidden">
+                                                    {a.avatar_url ? <img src={a.avatar_url} className="w-full h-full object-cover" /> : a.name[0]}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-[#1F2937]">{a.name}</p>
+                                                    <p className="text-[10px] text-secondary">{a.department} • Class of {a.batch_year}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-8 py-5 text-sm">
+                                            <p className="font-bold text-[#4B5563]">{a.job_title || 'N/A'}</p>
+                                            <p className="text-secondary">{a.company || 'Not Specified'}</p>
+                                        </td>
+                                        <td className="px-8 py-5">
+                                            {a.is_verified ? (
+                                                <span className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase w-fit">
+                                                    <ShieldCheck className="w-3 h-3" /> Verified
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center gap-1 text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-lg uppercase w-fit">
+                                                    <AlertCircle className="w-3 h-3" /> Pending
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-8 py-5">
+                                            <div className="flex gap-2">
+                                                {a.is_mentor_available && <div title="Mentoring Active" className="w-6 h-6 bg-green-100 text-green-600 rounded-lg flex items-center justify-center"><GraduationCap className="w-3 h-3" /></div>}
+                                            </div>
+                                        </td>
+                                        <td className="px-8 py-5">
+                                            <button 
+                                                onClick={async () => {
+                                                    const res = await fetch('/api/admin/alumni/verify', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                        body: JSON.stringify({ userId: a.id, isVerified: !a.is_verified })
+                                                    });
+                                                    if (res.ok) {
+                                                        setAlumni(alumni.map(al => al.id === a.id ? { ...al, is_verified: !al.is_verified } : al));
+                                                    }
+                                                }}
+                                                className={`text-xs font-bold ${a.is_verified ? 'text-red-500' : 'text-blue-600'} hover:underline`}
+                                            >
+                                                {a.is_verified ? 'Revoke Verification' : 'Verify Profile'}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {alumni.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="py-20 text-center text-gray-400 font-medium italic">No alumni profiles registered yet.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     )}
                 </div>
             </div>
+
+            {isAddAlumniOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-bold">Add Alumnus Profile</h3>
+                            <button onClick={() => setIsAddAlumniOpen(false)}><X className="w-6 h-6 text-gray-400" /></button>
+                        </div>
+                        <form className="space-y-4" onSubmit={async (e) => {
+                            e.preventDefault();
+                            const formData = new FormData(e.currentTarget);
+                            const payload = Object.fromEntries(formData.entries());
+                            const res = await fetch('/api/admin/alumni/add', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify(payload)
+                            });
+                            if (res.ok) {
+                                setIsAddAlumniOpen(false);
+                                // Refresh alumni list
+                                fetch('/api/admin/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
+                                    .then(async r => (r.ok ? await safeJson(r) : []) || [])
+                                    .then(setAlumni);
+                            } else {
+                                const err = await res.json();
+                                alert(err.message || 'Failed to add alumnus');
+                            }
+                        }}>
+                            <input name="name" placeholder="Full Name" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="email" placeholder="Email" required type="email" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <select name="department" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none">
+                                    <option value="">Department</option>
+                                    <option value="CSE">CSE</option>
+                                    <option value="ISE">ISE</option>
+                                    <option value="ECE">ECE</option>
+                                    <option value="MECH">MECH</option>
+                                    <option value="CIVIL">CIVIL</option>
+                                    <option value="DS">DS</option>
+                                    <option value="AI">AI</option>
+                                    <option value="EEE">EEE</option>
+                                </select>
+                                <input name="batchYear" placeholder="Batch (e.g. 2018)" type="number" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            </div>
+                            <input name="company" placeholder="Current Company" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="jobTitle" placeholder="Current Job Title" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="skills" placeholder="Skills (comma separated)" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <textarea name="summary" placeholder="Brief Professional Summary/Bio" className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none font-medium text-sm" />
+                            
+                            <p className="text-[10px] text-gray-400 italic">Default password will be 'pass123'. Alumnus can change it after login.</p>
+                            
+                            <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100">Register Alumnus</button>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {isAddFacultyOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
@@ -3551,6 +3793,7 @@ function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: 
                             <input name="rollNumber" placeholder="Roll Number" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <input name="semester" placeholder="Semester" required type="number" className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <input name="department" placeholder="Department" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
+                            <input name="section" placeholder="Section (e.g. A)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
                             <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold">Create Student</button>
                             <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
                         </form>
@@ -4127,81 +4370,7 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
     const [locks, setLocks] = useState<number[]>([]);
     const [defaulters, setDefaulters] = useState<any[]>([]);
     const [trendData, setTrendData] = useState<any[]>([]);
-    const [qrData, setQrData] = useState<{qrToken: string, expiresAt: string} | null>(null);
-    const [isScanning, setIsScanning] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-
-    useEffect(() => {
-        let scanner: any = null;
-        if (isScanning) {
-            // Need a slight delay to ensure the div is mounted
-            const timer = setTimeout(() => {
-                scanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
-                scanner.render(async (decodedText: string) => {
-                    if (user.role === 'student') {
-                        // Student scanning faculty QR
-                        navigator.geolocation.getCurrentPosition(async (pos) => {
-                            const res = await fetch('/api/attendance/qr-scan', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify({ 
-                                    qrToken: decodedText,
-                                    latitude: pos.coords.latitude,
-                                    longitude: pos.coords.longitude
-                                })
-                            });
-                            if (res.ok) {
-                                alert('Attendance marked successfully!');
-                                setIsScanning(false);
-                                fetch('/api/attendance/stats', { headers: { 'Authorization': `Bearer ${token}` } })
-                                    .then(res => res.json()).then(setStats);
-                            } else {
-                                const err = await res.json();
-                                alert(err.message || 'Verification failed');
-                                setIsScanning(false);
-                            }
-                        }, (err) => {
-                            alert('Geolocation access required for attendance verification');
-                            setIsScanning(false);
-                        });
-                    } else if (user.role === 'faculty') {
-                        // Faculty scanning student QR (Roll Number)
-                        if (!selectedSubject) {
-                            alert('Please select a subject first!');
-                            setIsScanning(false);
-                            if (scanner) scanner.clear();
-                            return;
-                        }
-                        const res = await fetch('/api/faculty/attendance/qr/mark', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify({ 
-                                rollNumber: decodedText,
-                                subjectId: selectedSubject,
-                                date: selectedDate
-                            })
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            alert(`Attendance marked for ${data.studentName} (${decodedText})`);
-                            // Keep scanning for more students? No, let's close or provide feedback.
-                        } else {
-                            const err = await res.json();
-                            alert(err.message || 'Marking failed');
-                        }
-                    }
-                }, (err: any) => {
-                    // console.log(err);
-                });
-            }, 100);
-            return () => {
-                clearTimeout(timer);
-                if (scanner) {
-                    try { scanner.clear(); } catch(e) {}
-                }
-            };
-        }
-    }, [isScanning, token, user.role, selectedSubject, selectedDate]);
 
     useEffect(() => {
         if (user.role === 'admin' || user.role === 'faculty') {
@@ -4295,12 +4464,6 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                         </button>
                         <h2 className="text-2xl font-bold text-[#1F2937]">Attendance Portal</h2>
                     </div>
-                    <button 
-                        onClick={() => setIsScanning(true)}
-                        className="px-6 py-2.5 bg-purple-600 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-purple-200"
-                    >
-                        <QrIcon className="w-5 h-5" /> Scan QR Check-in
-                    </button>
                 </div>
 
                 {lowAttendance.length > 0 && (
@@ -4522,12 +4685,6 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                     {(user.role === 'admin' || user.role === 'faculty') && (
                         <>
                             <button onClick={() => setActiveSubTab('defaulters' as any)} className={`whitespace-nowrap text-sm font-bold uppercase tracking-widest ${activeSubTab === 'defaulters' as any ? 'text-[#7C3AED] border-b-2 border-[#7C3AED] pb-4' : 'text-secondary'}`}>Defaulter Tool</button>
-                            <button 
-                                onClick={() => setIsScanning(true)} 
-                                className="whitespace-nowrap text-sm font-bold uppercase tracking-widest text-[#7C3AED] pb-4 flex items-center gap-2"
-                            >
-                                <QrIcon className="w-4 h-4" /> QR Scanner Mode
-                            </button>
                         </>
                     )}
                 </div>
@@ -4541,24 +4698,6 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                             return (
                                 <div key={i} className="p-6 bg-gray-50 rounded-3xl relative group">
                                     <div className="absolute top-4 right-4 flex gap-2">
-                                        <button 
-                                            onClick={async () => {
-                                                const res = await fetch('/api/attendance/qr-generate', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                                    body: JSON.stringify({ subjectId: sub.id })
-                                                });
-                                                if (res.ok) {
-                                                    const data = await res.json();
-                                                    setQrData(data);
-                                                    setSelectedSubject(sub.id);
-                                                }
-                                            }}
-                                            className="w-8 h-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-gray-400 hover:text-purple-600 shadow-sm transition-all"
-                                            title="Generate QR"
-                                        >
-                                            <QrIcon className="w-4 h-4" />
-                                        </button>
                                         {user.role === 'admin' && (
                                             <button 
                                                 onClick={async () => {
@@ -4843,69 +4982,6 @@ function AttendanceView({ token, user, setActiveTab }: { token: string, user: an
                         <div className="flex gap-4">
                             <button onClick={handleMarkAttendance} className="flex-1 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-xl shadow-purple-200">Submit Attendance</button>
                             <button onClick={() => setIsMarking(false)} className="px-8 py-4 bg-gray-50 text-gray-500 rounded-2xl font-bold">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isScanning && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative">
-                        <button onClick={() => setIsScanning(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
-                            <X className="w-6 h-6" />
-                        </button>
-                        <div className="text-center mb-8">
-                            <div className="w-20 h-20 bg-purple-100 rounded-[30px] flex items-center justify-center mx-auto mb-6">
-                                <QrIcon className="w-10 h-10 text-purple-600" />
-                            </div>
-                            <h3 className="text-2xl font-bold mb-2">
-                                {user.role === 'faculty' ? 'Scan Student ID' : 'Scan Classroom QR'}
-                            </h3>
-                            <p className="text-sm text-secondary">
-                                {user.role === 'faculty' 
-                                    ? 'Scan the student\'s QR code to instantly mark them present' 
-                                    : 'Point your camera at the QR code displayed by the faculty'}
-                            </p>
-                            {user.role === 'faculty' && !selectedSubject && (
-                                <p className="mt-4 text-xs font-bold text-orange-600 uppercase tracking-widest">
-                                    ⚠️ Select a subject in "Mark Attendance" first
-                                </p>
-                            )}
-                        </div>
-                        
-                        <div id="qr-reader" className="overflow-hidden rounded-3xl border-4 border-purple-50 aspect-square mb-8">
-                            {/* QR Scanner mounts here */}
-                        </div>
-                        <button onClick={() => setIsScanning(false)} className="w-full py-4 bg-gray-50 text-gray-500 rounded-2xl font-bold">Cancel</button>
-                    </div>
-                </div>
-            )}
-
-            {qrData && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
-                    <div className="bg-white w-full max-w-sm rounded-[40px] p-10 relative">
-                        <button onClick={() => setQrData(null)} className="absolute top-8 right-8 text-gray-400">
-                            <X className="w-6 h-6" />
-                        </button>
-                        <div className="text-center">
-                            <h3 className="text-xl font-bold mb-1">Classroom Check-in</h3>
-                            <p className="text-xs text-secondary mb-8">Students scan this to mark attendance</p>
-                            
-                            <div className="p-4 bg-white border-8 border-purple-50 rounded-[40px] shadow-inner mb-8">
-                                <div className="aspect-square bg-gray-50 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-[30px]">
-                                    <div className="text-center p-6">
-                                        <QrIcon className="w-16 h-16 text-purple-200 mx-auto mb-4" />
-                                        <p className="text-[10px] font-mono text-gray-400 break-all">{qrData.qrToken}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-center gap-2 mb-8">
-                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                <p className="text-xs font-bold text-green-600">Active • Expires in 5m</p>
-                            </div>
-
-                            <button onClick={() => setQrData(null)} className="w-full py-4 bg-[#111827] text-white rounded-2xl font-bold">Close Portal</button>
                         </div>
                     </div>
                 </div>
@@ -5531,6 +5607,7 @@ function ProfileView({ token, user }: { token: string, user: any }) {
                                 <div className="space-y-4">
                                     <InfoField label="Roll Number" value={profile.roll_number} />
                                     <InfoField label="Semester" value={profile.semester} />
+                                    <InfoField label="Section" value={profile.section || 'A'} />
                                     <InfoField label="Department" value={profile.department} />
                                 </div>
                             </div>
@@ -5575,6 +5652,7 @@ function ProfileView({ token, user }: { token: string, user: any }) {
                                 <EditField label="Blood Group" name="blood_group" defaultValue={profile.blood_group} />
                                 <EditField label="Father's Name" name="father_name" defaultValue={profile.father_name} />
                                 <EditField label="Mother's Name" name="mother_name" defaultValue={profile.mother_name} />
+                                <EditField label="Section" name="section" defaultValue={profile.section} />
                                 <EditField label="Guardian Contact" name="guardian_contact" defaultValue={profile.guardian_contact} />
                                 <EditField label="Enrollment Year" name="enrollment_year" type="number" defaultValue={profile.enrollment_year} />
                             </div>
@@ -5778,237 +5856,635 @@ function AdminProfileView({ token, setActiveTab }: { token: string, setActiveTab
     );
 }
 
-function AlumniView({ token, user }: { token: string, user: any }) {
-    const [alumni, setAlumni] = useState<any[]>([]);
+function AlumniHub({ token, user }: { token: string, user: any }) {
+    const [activeTab, setActiveTab] = useState<'network' | 'mentorship' | 'messages'>('network');
+    const [directory, setDirectory] = useState<any[]>([]);
+    const [recommended, setRecommended] = useState<any[]>([]);
+    const [connections, setConnections] = useState<any[]>([]);
+    const [mentorshipRequests, setMentorshipRequests] = useState<any[]>([]);
     const [search, setSearch] = useState('');
-    const [isAddOpen, setIsAddOpen] = useState(false);
-    const [editingAlumni, setEditingAlumni] = useState<any>(null);
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [filters, setFilters] = useState({ department: '', batch: '' });
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(async res => (res.ok ? await safeJson(res) : []) || [])
-            .then(setAlumni);
-    }, [token]);
+        fetchDirectory();
+        fetchRecommended();
+        fetchConnections();
+        fetchMentorshipRequests();
+    }, [token, activeTab]);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setSelectedImage(reader.result as string);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleAddAlumni = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = Object.fromEntries(formData.entries());
-        
-        const res = await fetch('/api/alumni', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({
-                ...payload,
-                imageUrl: selectedImage,
-                batchYear: parseInt(payload.batchYear as string) || new Date().getFullYear()
-            })
-        });
-        if (res.ok) {
-            setIsAddOpen(false);
-            setSelectedImage(null);
-            fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(async r => (r.ok ? await safeJson(r) : []) || [])
-                .then(setAlumni);
-        } else {
-            const err = await res.json();
-            alert(err.message || 'Failed to add alumni record');
-        }
-    };
-
-    const handleEditAlumni = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget as HTMLFormElement);
-        const payload = Object.fromEntries(formData.entries());
-        
-        const res = await fetch(`/api/alumni/${editingAlumni.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({
-                ...payload,
-                imageUrl: selectedImage || editingAlumni.image_url,
-                batchYear: parseInt(payload.batchYear as string) || new Date().getFullYear()
-            })
-        });
-        if (res.ok) {
-            setEditingAlumni(null);
-            setSelectedImage(null);
-            fetch('/api/alumni', { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(async r => (r.ok ? await safeJson(r) : []) || [])
-                .then(setAlumni);
-        } else {
-            const err = await res.json();
-            alert(err.message || 'Failed to update alumni record');
-        }
-    };
-
-    const handleDelete = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this record?')) return;
-        const res = await fetch(`/api/alumni/${id}`, {
-            method: 'DELETE',
+    const fetchDirectory = async () => {
+        setLoading(true);
+        const params = new URLSearchParams({ ...filters, search });
+        const res = await fetch(`/api/alumni/directory?${params.toString()}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) {
-            setAlumni(alumni.filter(a => a.id !== id));
-        }
+        if (res.ok) setDirectory(await res.json());
+        setLoading(false);
     };
 
-    const filtered = alumni.filter(a => 
-        a.name.toLowerCase().includes(search.toLowerCase()) ||
-        a.batch_year.toString().includes(search)
-    );
+    const fetchRecommended = async () => {
+        const res = await fetch('/api/alumni/recommended', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (res.ok) setRecommended(await res.json());
+    };
+
+    const fetchConnections = async () => {
+        const res = await fetch('/api/alumni/connections', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (res.ok) setConnections(await res.json());
+    };
+
+    const fetchMentorshipRequests = async () => {
+        const res = await fetch('/api/alumni/mentorship/requests', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (res.ok) setMentorshipRequests(await res.json());
+    };
+
+    const handleConnect = async (alumniId: number) => {
+        const res = await fetch('/api/alumni/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ alumniId })
+        });
+        if (res.ok) {
+            alert('Connection request sent!');
+            fetchConnections();
+            fetchDirectory();
+            fetchRecommended();
+        }
+    };
 
     return (
         <div className="space-y-8">
-            <div className="flex flex-wrap gap-4 items-center justify-between">
-                <h2 className="text-2xl font-bold text-[#1F2937]">Alumni Network</h2>
-                <div className="flex gap-4 flex-1 max-w-md">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Network Size</p>
+                    <p className="text-3xl font-black text-[#1F2937]">{directory.length}</p>
+                    <p className="text-xs text-green-500 font-bold mt-1">Active Alumni</p>
+                </div>
+                <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Verified Profiles</p>
+                    <p className="text-3xl font-black text-[#1F2937]">{directory.filter(a => a.is_verified).length}</p>
+                    <p className="text-xs text-purple-500 font-bold mt-1">Vetted by Admin</p>
+                </div>
+                <div className="bg-[#7C3AED] p-6 rounded-[32px] shadow-xl shadow-purple-100 text-white">
+                    <p className="text-[10px] font-bold text-purple-200 uppercase tracking-widest mb-1">Active Mentors</p>
+                    <p className="text-3xl font-black">{directory.filter(a => a.is_mentor_available).length}</p>
+                    <p className="text-xs text-purple-100 font-bold mt-1">Available Now</p>
+                </div>
+                <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm flex flex-col justify-between">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Your Connections</p>
+                    <div className="flex items-center gap-2">
+                         <div className="flex -space-x-2">
+                             {[1,2,3].map(i => (
+                                 <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-purple-100 flex items-center justify-center">
+                                     <User className="w-4 h-4 text-purple-300" />
+                                 </div>
+                             ))}
+                         </div>
+                         <span className="text-sm font-bold text-gray-500">+{connections.length}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-2xl w-fit">
+                {[
+                    { id: 'network', label: 'Network', icon: <Users className="w-4 h-4" /> },
+                    { id: 'mentorship', label: 'Mentorship', icon: <GraduationCap className="w-4 h-4" /> },
+                    { id: 'messages', label: 'Messages', icon: <MessageSquare className="w-4 h-4" /> }
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as any)}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                            activeTab === tab.id ? 'bg-white text-[#7C3AED] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        {tab.icon}
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+                {activeTab === 'network' && (
+                    <AlumniNetworkView 
+                        token={token} 
+                        user={user} 
+                        directory={directory}
+                        recommended={recommended}
+                        onRefresh={fetchDirectory}
+                        onConnect={handleConnect}
+                        search={search}
+                        setSearch={setSearch}
+                        filters={filters}
+                        setFilters={setFilters}
+                        loading={loading}
+                    />
+                )}
+                {activeTab === 'mentorship' && (
+                    <AlumniMentorshipView 
+                        token={token} 
+                        user={user} 
+                        requests={mentorshipRequests}
+                        onRefresh={fetchMentorshipRequests}
+                    />
+                )}
+                {activeTab === 'messages' && (
+                    <AlumniChatView 
+                        token={token} 
+                        user={user} 
+                        connections={connections.filter(c => c.status === 'accepted')}
+                    />
+                )}
+            </motion.div>
+        </div>
+    );
+}
+
+function AlumniNetworkView({ token, user, directory, recommended, onRefresh, onConnect, search, setSearch, filters, setFilters, loading }: any) {
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    return (
+        <div className="space-y-8">
+            {/* Recommended Section */}
+            {recommended.length > 0 && (
+                <section>
+                    <div className="flex items-center gap-2 mb-6">
+                        <Sparkles className="w-5 h-5 text-purple-500" />
+                        <h3 className="text-xl font-bold text-[#1F2937]">Smart Matches for You</h3>
+                    </div>
+                    <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
+                        {recommended.map((alu: any) => (
+                            <motion.div 
+                                key={alu.id}
+                                whileHover={{ y: -5 }}
+                                className="min-w-[280px] bg-white p-6 rounded-[32px] border border-gray-50 shadow-sm relative overflow-hidden group"
+                            >
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-50 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform" />
+                                <div className="relative space-y-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center text-[#7C3AED] font-bold text-xl overflow-hidden">
+                                            {alu.avatar_url ? <img src={alu.avatar_url} className="w-full h-full object-cover" /> : alu.name[0]}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-[#1F2937] flex items-center gap-1">
+                                                {alu.name}
+                                                {alu.is_verified && <ShieldCheck className="w-3 h-3 text-blue-500" />}
+                                            </h4>
+                                            <p className="text-xs text-secondary">{alu.batch_year} • {alu.department}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-[#1F2937]">{alu.job_title}</p>
+                                        <p className="text-xs text-secondary">{alu.company}</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => onConnect(alu.id)}
+                                        className="w-full py-3 bg-gray-50 text-[#7C3AED] rounded-xl text-xs font-bold hover:bg-purple-50 transition-colors"
+                                    >
+                                        Connect
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* Main Directory */}
+            <section className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                <div className="flex flex-col md:flex-row gap-6 mb-8">
                     <div className="relative flex-1">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input 
-                            placeholder="Search by name or batch..."
-                            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-100 rounded-2xl outline-none"
+                            placeholder="Search by name, company, job title, or skills..."
+                            className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-2xl outline-none border border-transparent focus:border-purple-200 transition-all text-sm"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && onRefresh()}
                         />
                     </div>
-                    {user.role === 'admin' && (
-                        <motion.button 
-                            whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(255,255,255,0.5)" }}
-                            onClick={() => {
-                                setSelectedImage(null);
-                                setIsAddOpen(true);
-                            }} 
-                            className="px-6 py-3 bg-[#7C3AED] text-white rounded-2xl font-bold text-sm"
+                    <div className="flex gap-4">
+                         <button 
+                            onClick={() => setIsFilterOpen(!isFilterOpen)}
+                            className={`px-6 py-4 rounded-2xl font-bold flex items-center gap-2 text-sm transition-all ${isFilterOpen ? 'bg-[#7C3AED] text-white shadow-lg' : 'bg-gray-50 text-secondary hover:bg-gray-100'}`}
+                         >
+                             <Filter className="w-4 h-4" /> Filters
+                             {(filters.department || filters.batch) && <span className="w-2 h-2 rounded-full bg-orange-400" />}
+                         </button>
+                         <button onClick={onRefresh} className="px-8 py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100 text-sm">Explore</button>
+                    </div>
+                </div>
+
+                {isFilterOpen && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 overflow-hidden">
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Department</label>
+                            <select 
+                                value={filters.department} 
+                                onChange={(e) => setFilters({...filters, department: e.target.value})}
+                                className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium text-sm"
+                            >
+                                <option value="">All Departments</option>
+                                <option value="CSE">Computer Science</option>
+                                <option value="ISE">Information Science</option>
+                                <option value="ECE">Electronics</option>
+                                <option value="ME">Mechanical</option>
+                                <option value="CIVIL">Civil</option>
+                                <option value="AI">AI & ML</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Batch Year</label>
+                            <input 
+                                type="number" 
+                                placeholder="e.g. 2020" 
+                                value={filters.batch}
+                                onChange={(e) => setFilters({...filters, batch: e.target.value})}
+                                className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none font-medium text-sm"
+                            />
+                        </div>
+                        <div className="flex items-end">
+                            <button 
+                                onClick={() => {
+                                    setFilters({ department: '', batch: '' });
+                                    setSearch('');
+                                    setTimeout(onRefresh, 0);
+                                }}
+                                className="w-full py-3 text-red-500 font-bold text-xs hover:bg-red-50 rounded-xl transition-all"
+                            >
+                                Reset All Filters
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {loading ? (
+                        [1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-gray-100 rounded-[32px] animate-pulse" />)
+                    ) : directory.length > 0 ? (
+                        directory.map((alu: any) => (
+                            <div key={alu.id} className="group bg-white p-6 rounded-[32px] border border-gray-50 hover:border-purple-100 hover:shadow-xl hover:shadow-purple-50 transition-all">
+                                <div className="flex items-start justify-between mb-6">
+                                    <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center text-2xl font-bold text-purple-600 overflow-hidden">
+                                        {alu.avatar_url ? <img src={alu.avatar_url} className="w-full h-full object-cover" /> : alu.name[0]}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {alu.is_verified && (
+                                            <div title="Verified Alumni" className="w-8 h-8 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center">
+                                                <ShieldCheck className="w-4 h-4" />
+                                            </div>
+                                        )}
+                                        {alu.is_mentor_available && (
+                                            <div title="Mentor Available" className="w-8 h-8 bg-green-50 text-green-500 rounded-full flex items-center justify-center">
+                                                <GraduationCap className="w-4 h-4" />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="mb-6">
+                                    <h4 className="text-lg font-black text-[#1F2937] leading-tight mb-1">{alu.name}</h4>
+                                    <p className="text-secondary font-medium text-sm">{alu.job_title} @ {alu.company}</p>
+                                </div>
+                                {alu.summary && (
+                                    <p className="text-xs text-[#6B7280] line-clamp-2 mb-6 leading-relaxed italic">
+                                        "{alu.summary}"
+                                    </p>
+                                )}
+                                <div className="flex flex-wrap gap-2 mb-6">
+                                    {alu.skills?.split(',').map((skill: string, idx: number) => (
+                                        <span key={idx} className="px-3 py-1 bg-gray-100 text-[#4B5563] text-[10px] font-bold rounded-full uppercase tracking-wider">{skill.trim()}</span>
+                                    ))}
+                                </div>
+                                <div className="flex items-center justify-between pt-6 border-t border-gray-50">
+                                    <span className="text-[10px] font-black text-gray-300 uppercase letter-spacing-1">Class of {alu.batch_year}</span>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => onConnect(alu.id)}
+                                            className="px-4 py-2 bg-[#7C3AED] text-white rounded-xl text-xs font-bold hover:bg-[#6D28D9] transition-all"
+                                        >
+                                            Connect
+                                        </button>
+                                        {alu.linked_in_url && (
+                                            <a href={alu.linked_in_url} target="_blank" className="p-2 bg-gray-50 text-[#6B7280] rounded-xl hover:bg-purple-50 hover:text-[#7C3AED] transition-all">
+                                                <ExternalLink className="w-4 h-4" />
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="col-span-full py-20 text-center">
+                            <Users className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+                            <p className="text-secondary font-medium italic">No alumni matching your search...</p>
+                        </div>
+                    )}
+                </div>
+            </section>
+        </div>
+    );
+}
+
+function AlumniMentorshipView({ token, user, requests, onRefresh }: any) {
+    const [isProposeOpen, setIsProposeOpen] = useState(false);
+    const [selectedMentor, setSelectedMentor] = useState<any>(null);
+    const [mentors, setMentors] = useState<any[]>([]);
+
+    useEffect(() => {
+        fetch('/api/alumni/directory', { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(res => res.json())
+            .then(data => setMentors(data.filter((a: any) => a.is_mentor_available)));
+    }, [token]);
+
+    const handleRespond = async (requestId: number, status: string) => {
+        const res = await fetch('/api/alumni/mentorship/respond', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ requestId, status })
+        });
+        if (res.ok) onRefresh();
+    };
+
+    return (
+        <div className="space-y-8">
+            <div className="grid md:grid-cols-3 gap-8">
+                <div className="md:col-span-2 space-y-6">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                        <div className="flex items-center justify-between mb-8">
+                            <h3 className="text-xl font-bold text-[#1F2937]">Mentors Panel</h3>
+                            <button className="text-sm font-bold text-[#7C3AED] hover:underline">View All available Mentors</button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {mentors.map((mentor: any) => (
+                                <div key={mentor.id} className="p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:border-purple-200 transition-all flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-4 mb-4">
+                                            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-bold text-purple-600 shadow-sm overflow-hidden">
+                                                {mentor.avatar_url ? <img src={mentor.avatar_url} className="w-full h-full object-cover" /> : mentor.name[0]}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-[#1F2937] text-sm">{mentor.name}</h4>
+                                                <p className="text-[10px] text-secondary font-medium">{mentor.job_title} @ {mentor.company}</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-[#6B7280] mb-4 line-clamp-2">"Passionate about helping students with career planning and technical skills. Let's connect!"</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => { setSelectedMentor(mentor); setIsProposeOpen(true); }}
+                                        className="w-full py-2.5 bg-white text-[#7C3AED] border border-purple-100 rounded-xl text-xs font-bold hover:bg-purple-50 transition-all"
+                                    >
+                                        Propose Session
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-8">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                        <h3 className="text-lg font-bold text-[#1F2937] mb-6">Mentorship Status</h3>
+                        <div className="space-y-4">
+                            {requests.map((req: any) => (
+                                <div key={req.id} className="p-4 bg-gray-50 rounded-2xl space-y-3 relative overflow-hidden">
+                                     <div className={`absolute top-0 left-0 w-1 h-full ${
+                                         req.status === 'pending' ? 'bg-orange-400' : 
+                                         req.status === 'accepted' ? 'bg-green-400' : 'bg-red-400'
+                                     }`} />
+                                     <div className="flex justify-between items-start">
+                                         <div>
+                                             <p className="text-xs font-bold text-[#1F2937]">{req.topic}</p>
+                                             <p className="text-[10px] text-secondary">{new Date(req.date_time).toLocaleDateString()}</p>
+                                         </div>
+                                         <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                                             req.status === 'pending' ? 'bg-orange-100 text-orange-600' : 
+                                             req.status === 'accepted' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                                         }`}>
+                                             {req.status}
+                                         </span>
+                                     </div>
+                                     {user.role === 'alumni' && req.status === 'pending' && (
+                                         <div className="flex gap-2">
+                                             <button onClick={() => handleRespond(req.id, 'accepted')} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-[10px] font-bold">Accept</button>
+                                             <button onClick={() => handleRespond(req.id, 'rejected')} className="flex-1 py-2 bg-gray-100 text-gray-500 rounded-lg text-[10px] font-bold">Reject</button>
+                                         </div>
+                                     )}
+                                     {(req.status === 'accepted' || req.status === 'completed') && (
+                                         <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                              <Video className="w-3 h-3 text-purple-400" />
+                                              <span className="text-[10px] text-secondary font-medium">Link sent to email</span>
+                                         </div>
+                                     )}
+                                </div>
+                            ))}
+                            {requests.length === 0 && (
+                                <p className="text-xs text-secondary italic text-center py-4">No requests found...</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {isProposeOpen && selectedMentor && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+                    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-lg rounded-[40px] p-10 relative shadow-2xl">
+                        <button onClick={() => setIsProposeOpen(false)} className="absolute top-8 right-8 text-secondary"><X /></button>
+                        <h3 className="text-2xl font-black text-[#1F2937] mb-2">Request Mentorship</h3>
+                        <p className="text-sm text-secondary mb-8">Propose a session with <b>{selectedMentor.name}</b></p>
+                        
+                        <form className="space-y-6" onSubmit={async (e) => {
+                            e.preventDefault();
+                            const fd = new FormData(e.currentTarget);
+                            const res = await fetch('/api/alumni/mentorship/propose', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({
+                                    mentorId: selectedMentor.id,
+                                    topic: fd.get('topic'),
+                                    mode: fd.get('mode'),
+                                    dateTime: fd.get('dateTime'),
+                                    pitch: fd.get('pitch')
+                                })
+                            });
+                            if (res.ok) {
+                                alert('Proposal sent!');
+                                setIsProposeOpen(false);
+                                onRefresh();
+                            }
+                        }}>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Topic</label>
+                                    <select name="topic" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none font-medium">
+                                        <option>Career Guidance</option>
+                                        <option>Mock Interview</option>
+                                        <option>Technical Review</option>
+                                        <option>Entrepreneurship</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Mode</label>
+                                    <select name="mode" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none font-medium">
+                                        <option>Virtual</option>
+                                        <option>In-person (On campus)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Preferred Date & Time</label>
+                                <input name="dateTime" type="datetime-local" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none font-medium" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Your Pitch Message</label>
+                                <textarea name="pitch" placeholder="Why do you want to connect? Briefly explain your background..." className="w-full h-32 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none font-medium text-sm" />
+                            </div>
+                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Send Proposal</button>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function AlumniChatView({ token, user, connections }: any) {
+    const [selectedContact, setSelectedContact] = useState<any>(null);
+    const [messages, setMessages] = useState<any[]>([]);
+    const [newMessage, setNewMessage] = useState('');
+    const chatEndRef = useRef<HTMLDivElement>(null);
+    const socketRef = useRef<any>(null);
+
+    useEffect(() => {
+        socketRef.current = io(window.location.origin);
+        socketRef.current.emit('join', user.id);
+        socketRef.current.on('new_alumni_message', (msg: any) => {
+            if (selectedContact && (msg.sender_id === selectedContact.id || msg.receiver_id === selectedContact.id)) {
+                setMessages(prev => [...prev, msg]);
+            }
+        });
+        return () => socketRef.current.disconnect();
+    }, [selectedContact, user.id]);
+
+    useEffect(() => {
+        if (selectedContact) {
+            fetch(`/api/alumni/messages/${selectedContact.id}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(res => res.json())
+                .then(setMessages);
+        }
+    }, [selectedContact, token]);
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const handleSendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !selectedContact) return;
+
+        const res = await fetch('/api/alumni/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ receiverId: selectedContact.id, content: newMessage })
+        });
+        if (res.ok) {
+            setNewMessage('');
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 flex h-[600px] overflow-hidden">
+            <div className="hidden md:flex w-80 border-r border-gray-100 flex-col">
+                <div className="p-6 border-b border-gray-50 bg-gray-50/50">
+                    <h3 className="font-black text-[#1F2937]">Conversations</h3>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    {connections.map((contact: any) => (
+                        <div 
+                            key={contact.id}
+                            onClick={() => setSelectedContact(contact)}
+                            className={`p-4 rounded-3xl cursor-pointer transition-all flex items-center gap-4 ${
+                                selectedContact?.id === contact.id ? 'bg-purple-50 border border-purple-100' : 'hover:bg-gray-50 border border-transparent'
+                            }`}
                         >
-                            Add Alumni
-                        </motion.button>
+                            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-bold text-[#7C3AED] shadow-sm overflow-hidden">
+                                {contact.avatar_url ? <img src={contact.avatar_url} className="w-full h-full object-cover" /> : contact.name[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="font-bold text-[#1F2937] text-sm truncate">{contact.name}</h4>
+                                <p className="text-[10px] text-secondary font-medium truncate">{contact.job_title || contact.role}</p>
+                            </div>
+                        </div>
+                    ))}
+                    {connections.length === 0 && (
+                        <div className="py-20 text-center px-6">
+                            <MessageSquare className="w-12 h-12 text-gray-100 mx-auto mb-4" />
+                            <p className="text-secondary text-xs italic">Connect with alumni to start chatting!</p>
+                        </div>
                     )}
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
-                {filtered.map((a, i) => (
-                    <div key={i} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-50 group">
-                        <div className="h-48 bg-gray-100 relative">
-                            <img src={a.image_url || `https://api.dicebear.com/7.x/initials/svg?seed=${a.name}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
-                                <p className="text-white text-xs font-medium">{a.career_info}</p>
-                            </div>
-                            <span className="absolute top-4 right-4 px-3 py-1 bg-white/90 backdrop-blur-sm text-[#7C3AED] rounded-full text-[10px] font-bold uppercase">
-                                Batch {a.batch_year}
-                            </span>
-                        </div>
-                        <div className="p-6">
-                            <h3 className="font-bold text-[#1F2937] mb-1">{a.name}</h3>
-                            <p className="text-xs text-[#6B7280] mb-4">{a.contact_details}</p>
-                            
-                            <div className="space-y-3">
-                                <div className="p-3 bg-gray-50 rounded-xl">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Achievements</p>
-                                    <p className="text-xs text-[#1F2937] line-clamp-2">{a.achievements}</p>
+            <div className="flex-1 flex flex-col bg-gray-50/30">
+                {selectedContact ? (
+                    <>
+                        <div className="p-6 bg-white border-b border-gray-50 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center font-bold text-purple-600">
+                                    {selectedContact.avatar_url ? <img src={selectedContact.avatar_url} className="w-full h-full object-cover rounded-xl" /> : selectedContact.name[0]}
                                 </div>
-                                {user.role === 'admin' && (
-                                    <div className="flex gap-4 pt-2">
-                                        <button onClick={() => {
-                                            setSelectedImage(null);
-                                            setEditingAlumni(a);
-                                        }} className="text-xs font-bold text-[#7C3AED]">Edit</button>
-                                        <button onClick={() => handleDelete(a.id)} className="text-xs font-bold text-red-500">Delete</button>
+                                <div>
+                                    <h4 className="font-bold text-[#1F2937] text-sm">{selectedContact.name}</h4>
+                                    <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">• Online</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><Video className="w-4 h-4" /></button>
+                                <button className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><MoreHorizontal className="w-4 h-4" /></button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
+                            {messages.map((msg, idx) => {
+                                const isMe = msg.sender_id === user.id;
+                                return (
+                                    <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[70%] p-4 rounded-[24px] ${
+                                            isMe ? 'bg-[#7C3AED] text-white rounded-br-none' : 'bg-white border border-gray-100 text-[#4B5563] rounded-bl-none shadow-sm'
+                                        }`}>
+                                            <p className="text-sm font-medium">{msg.content}</p>
+                                            <p className={`text-[8px] mt-2 font-bold uppercase tracking-widest ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
+                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                        </div>
                                     </div>
-                                )}
-                            </div>
+                                );
+                            })}
+                            <div ref={chatEndRef} />
                         </div>
+                        <div className="p-6 bg-white border-t border-gray-50">
+                            <form className="flex gap-4" onSubmit={handleSendMessage}>
+                                <input 
+                                    className="flex-1 px-6 py-4 bg-gray-50 rounded-2xl outline-none text-sm placeholder:text-gray-400 font-medium border border-transparent focus:border-purple-200 transition-all"
+                                    placeholder="Type your message here..."
+                                    value={newMessage}
+                                    onChange={(e) => setNewMessage(e.target.value)}
+                                />
+                                <button type="submit" className="w-14 h-14 bg-[#7C3AED] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-purple-100 hover:scale-105 transition-all">
+                                    <Send className="w-6 h-6" />
+                                </button>
+                            </form>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
+                        <div className="w-24 h-24 bg-purple-50 rounded-[40px] flex items-center justify-center text-purple-600 mb-6">
+                            <MessageSquare className="w-10 h-10" />
+                        </div>
+                        <h3 className="text-xl font-bold text-[#1F2937] mb-2">CampusChat Terminal</h3>
+                        <p className="text-sm text-secondary max-w-sm">Select a connection from the left sidebar to start a real-time professional conversation.</p>
+                        {connections.length > 0 && <p className="mt-2 text-xs font-bold text-[#7C3AED] md:hidden">Please use a larger screen to chat</p>}
                     </div>
-                ))}
+                )}
             </div>
-
-            {isAddOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative my-8 shadow-2xl">
-                        <h3 className="text-2xl font-bold mb-6">Add Alumni Record</h3>
-                        <form className="space-y-4" onSubmit={handleAddAlumni}>
-                            <input name="name" placeholder="Full Name" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="batchYear" placeholder="Batch Year (e.g. 2020)" type="number" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="contactDetails" placeholder="Contact (Email/Phone)" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <input name="careerInfo" placeholder="Current Career/Company" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none outline-none" />
-                            <textarea name="achievements" placeholder="Achievements" className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
-                            
-                            <div className="space-y-2">
-                                <label className="block text-xs font-bold text-gray-400 uppercase">Profile Image</label>
-                                <div className="flex items-center gap-4">
-                                    <label className="flex-1 cursor-pointer">
-                                        <div className="w-full py-3 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 hover:bg-gray-100 transition-colors">
-                                            <FileUp className="w-5 h-5 text-gray-400" />
-                                            <span className="text-xs font-semibold text-gray-500">Choose Image</span>
-                                        </div>
-                                        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                                    </label>
-                                    {selectedImage && (
-                                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-200">
-                                            <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Add Alumni</button>
-                            <button type="button" onClick={() => setIsAddOpen(false)} className="w-full py-2 text-gray-500 font-bold text-sm">Cancel</button>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {editingAlumni && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
-                    <div className="bg-white w-full max-w-md rounded-[40px] p-10 relative my-8 shadow-2xl">
-                        <h3 className="text-2xl font-bold mb-6">Edit Alumni Record</h3>
-                        <form className="space-y-4" onSubmit={handleEditAlumni}>
-                            <EditField label="Full Name" name="name" defaultValue={editingAlumni.name} />
-                            <EditField label="Batch Year" name="batchYear" type="number" defaultValue={editingAlumni.batch_year} />
-                            <EditField label="Contact" name="contactDetails" defaultValue={editingAlumni.contact_details} />
-                            <EditField label="Career Info" name="careerInfo" defaultValue={editingAlumni.career_info} />
-                            <div className="space-y-2">
-                                <label className="block text-xs font-bold text-gray-400 uppercase">Achievements</label>
-                                <textarea name="achievements" defaultValue={editingAlumni.achievements} className="w-full h-24 px-4 py-3 bg-gray-50 rounded-xl border-none outline-none resize-none" />
-                            </div>
-                            
-                            <div className="space-y-2">
-                                <label className="block text-xs font-bold text-gray-400 uppercase">Profile Image</label>
-                                <div className="flex items-center gap-4">
-                                    <label className="flex-1 cursor-pointer">
-                                        <div className="w-full py-3 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 hover:bg-gray-100 transition-colors">
-                                            <FileUp className="w-5 h-5 text-gray-400" />
-                                            <span className="text-xs font-semibold text-gray-500">Change Image</span>
-                                        </div>
-                                        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                                    </label>
-                                    {(selectedImage || editingAlumni.image_url) && (
-                                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-200">
-                                            <img src={selectedImage || editingAlumni.image_url} alt="Preview" className="w-full h-full object-cover" />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100">Update Record</button>
-                            <button type="button" onClick={() => setEditingAlumni(null)} className="w-full py-2 text-gray-500 font-bold text-sm">Cancel</button>
-                        </form>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

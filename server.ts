@@ -424,6 +424,10 @@ try {
     db.prepare("ALTER TABLE results ADD COLUMN credits_obtained INTEGER DEFAULT 0").run();
 } catch (e) {}
 
+try {
+    db.prepare("ALTER TABLE students ADD COLUMN section TEXT NOT NULL DEFAULT 'A'").run();
+} catch (e) {}
+
 // Seed initial data if empty or missing librarian
 const librarianExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'librarian'").get() as { count: number };
 const adminExists = db.prepare("SELECT count(*) as count FROM users WHERE role = 'admin'").get() as { count: number };
@@ -945,6 +949,99 @@ if (statusCount.count === 0) {
         console.log("[Seeding] Added sample DSATM study materials.");
     }
 
+// Alumni Hub Extensions
+try {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS alumni_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            company TEXT,
+            job_title TEXT,
+            skills TEXT,
+            batch_year INTEGER,
+            is_verified INTEGER DEFAULT 0,
+            is_mentor_available INTEGER DEFAULT 0,
+            linked_in_url TEXT,
+            summary TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS alumni_connections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requester_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(requester_id, receiver_id),
+            FOREIGN KEY(requester_id) REFERENCES users(id),
+            FOREIGN KEY(receiver_id) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS mentorship_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER NOT NULL,
+            mentor_id INTEGER NOT NULL,
+            topic TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            date_time DATETIME NOT NULL,
+            pitch TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(student_id) REFERENCES users(id),
+            FOREIGN KEY(mentor_id) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS alumni_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            is_read INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(sender_id) REFERENCES users(id),
+            FOREIGN KEY(receiver_id) REFERENCES users(id)
+        );
+    `);
+} catch (e) {
+    console.error("Migration error:", e);
+}
+
+// Enhanced Seeding for Alumni Profiles
+try {
+    const alumniProfileCount = db.prepare("SELECT count(*) as count FROM alumni_profiles").get() as { count: number };
+    if (alumniProfileCount.count === 0) {
+        const alumniUsers = [
+            { name: "Arjun Mehta", email: "arjun@alumni.com", company: "Adobe", title: "Senior UI Architect", skills: "React, Figma, Next.js", batch: 2018, dept: "CSE" },
+            { name: "Priya Sharma", email: "priya@alumni.com", company: "Amazon", title: "Cloud Solution Lead", skills: "AWS, Kubernetes, Go", batch: 2019, dept: "ISE" },
+            { name: "Neha Iyer", email: "neha@alumni.com", company: "Netflix", title: "Backend Engineer", skills: "Java, Spring Boot, Kafka", batch: 2020, dept: "CSE" },
+            { name: "Kunal Singh", email: "kunal@alumni.com", company: "Zomato", title: "Product Manager", skills: "Product Strategy, Data Analysis", batch: 2017, dept: "ECE" }
+        ];
+
+        for (const alu of alumniUsers) {
+            try {
+                const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get(alu.email) as any;
+                let uid;
+                if (!existingUser) {
+                    const res = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)").run(
+                        alu.name, alu.email, hashedPasswordDefault, 'alumni', alu.dept
+                    );
+                    uid = res.lastInsertRowid;
+                } else {
+                    uid = existingUser.id;
+                    db.prepare("UPDATE users SET role = 'alumni' WHERE id = ?").run(uid);
+                }
+                
+                db.prepare(`
+                    INSERT OR IGNORE INTO alumni_profiles (user_id, company, job_title, skills, batch_year, is_verified, is_mentor_available)
+                    VALUES (?, ?, ?, ?, ?, 1, 1)
+                `).run(uid, alu.company, alu.title, alu.skills, alu.batch);
+            } catch (err) {
+                console.error("Seeding alumni failed for", alu.name, err);
+            }
+        }
+        console.log("[Seeding] Populated standard Alumni profiles.");
+    }
+} catch (e) {
+     console.error("Seeding block failure:", e);
+}
+
 try {
     db.prepare("ALTER TABLE subjects ADD COLUMN capacity INTEGER DEFAULT 60").run();
 } catch (e) {}
@@ -1055,6 +1152,205 @@ async function startServer() {
             res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
         } else {
             res.status(401).json({ message: "Invalid credentials" });
+        }
+    });
+
+    // --- ALUMNI HUB ROUTES ---
+    
+    app.get("/api/alumni/directory", authenticateToken, (req, res) => {
+        const { department, batch, search } = req.query;
+        let query = `
+            SELECT u.id, u.name, u.email, u.department, u.avatar_url,
+                   ap.company, ap.job_title, ap.skills, ap.batch_year, ap.is_verified, ap.is_mentor_available, ap.linked_in_url, ap.summary
+            FROM users u
+            JOIN alumni_profiles ap ON u.id = ap.user_id
+            WHERE u.role = 'alumni'
+        `;
+        const params: any[] = [];
+        if (department) {
+            query += " AND u.department = ?";
+            params.push(department);
+        }
+        if (batch) {
+            query += " AND ap.batch_year = ?";
+            params.push(batch);
+        }
+        if (search) {
+            query += " AND (u.name LIKE ? OR ap.company LIKE ? OR ap.job_title LIKE ? OR ap.skills LIKE ?)";
+            const s = `%${search}%`;
+            params.push(s, s, s, s);
+        }
+        
+        try {
+            const alumni = db.prepare(query).all(...params);
+            res.json(alumni);
+        } catch (e) {
+            res.status(500).json({ message: "Failed to fetch directory" });
+        }
+    });
+
+    app.get("/api/alumni/recommended", authenticateToken, (req: any, res) => {
+        const user = db.prepare("SELECT department FROM users WHERE id = ?").get(req.user.id) as any;
+        if (!user) return res.json([]);
+
+        const recommended = db.prepare(`
+            SELECT u.id, u.name, u.department, u.avatar_url, ap.company, ap.job_title, ap.batch_year, ap.is_verified
+            FROM users u
+            JOIN alumni_profiles ap ON u.id = ap.user_id
+            WHERE u.role = 'alumni' 
+            AND u.department = ?
+            AND u.id NOT IN (
+                SELECT receiver_id FROM alumni_connections WHERE requester_id = ?
+                UNION
+                SELECT requester_id FROM alumni_connections WHERE receiver_id = ?
+            )
+            LIMIT 5
+        `).all(user.department, req.user.id, req.user.id);
+        res.json(recommended);
+    });
+
+    app.get("/api/alumni/connections", authenticateToken, (req: any, res) => {
+        const contacts = db.prepare(`
+            SELECT DISTINCT u.id, u.name, u.avatar_url, u.role, ap.company, ap.job_title, ac.status, ac.requester_id
+            FROM alumni_connections ac
+            JOIN users u ON (u.id = ac.requester_id OR u.id = ac.receiver_id)
+            LEFT JOIN alumni_profiles ap ON u.id = ap.user_id
+            WHERE (ac.requester_id = ? OR ac.receiver_id = ?) AND u.id != ?
+        `).all(req.user.id, req.user.id, req.user.id);
+        res.json(contacts);
+    });
+
+    app.post("/api/alumni/connect", authenticateToken, (req: any, res) => {
+        const { alumniId } = req.body;
+        try {
+            db.prepare("INSERT INTO alumni_connections (requester_id, receiver_id) VALUES (?, ?)").run(req.user.id, alumniId);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(400).json({ message: "Request already sent or error occurred" });
+        }
+    });
+
+    app.post("/api/alumni/connections/update", authenticateToken, (req: any, res) => {
+        const { requesterId, status } = req.body;
+        db.prepare("UPDATE alumni_connections SET status = ? WHERE requester_id = ? AND receiver_id = ?")
+            .run(status, requesterId, req.user.id);
+        res.json({ success: true });
+    });
+
+    app.post("/api/alumni/mentorship/propose", authenticateToken, (req: any, res) => {
+        const { mentorId, topic, mode, dateTime, pitch } = req.body;
+        db.prepare(`
+            INSERT INTO mentorship_requests (student_id, mentor_id, topic, mode, date_time, pitch)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(req.user.id, mentorId, topic, mode, dateTime, pitch);
+        res.json({ success: true });
+    });
+
+    app.get("/api/alumni/mentorship/requests", authenticateToken, (req: any, res) => {
+        const isMentor = req.user.role === 'alumni';
+        const query = isMentor ? `
+            SELECT mr.*, u.name as sender_name, u.avatar_url as sender_avatar
+            FROM mentorship_requests mr
+            JOIN users u ON mr.student_id = u.id
+            WHERE mr.mentor_id = ?
+        ` : `
+            SELECT mr.*, u.name as mentor_name, u.avatar_url as mentor_avatar, ap.company, ap.job_title
+            FROM mentorship_requests mr
+            JOIN users u ON mr.mentor_id = u.id
+            JOIN alumni_profiles ap ON u.id = ap.user_id
+            WHERE mr.student_id = ?
+        `;
+        const requests = db.prepare(query).all(req.user.id);
+        res.json(requests);
+    });
+
+    app.post("/api/alumni/mentorship/respond", authenticateToken, (req: any, res) => {
+        const { requestId, status } = req.body;
+        db.prepare("UPDATE mentorship_requests SET status = ? WHERE id = ? AND mentor_id = ?").run(status, requestId, req.user.id);
+        res.json({ success: true });
+    });
+
+    app.get("/api/alumni/messages/:otherUserId", authenticateToken, (req: any, res) => {
+        const otherUserId = req.params.otherUserId;
+        const messages = db.prepare(`
+            SELECT * FROM alumni_messages 
+            WHERE (sender_id = ? AND receiver_id = ?) 
+               OR (sender_id = ? AND receiver_id = ?)
+            ORDER BY created_at ASC
+        `).all(req.user.id, otherUserId, otherUserId, req.user.id);
+        db.prepare("UPDATE alumni_messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?").run(otherUserId, req.user.id);
+        res.json(messages);
+    });
+
+    app.post("/api/alumni/messages", authenticateToken, (req: any, res) => {
+        const { receiverId, content } = req.body;
+        const result = db.prepare("INSERT INTO alumni_messages (sender_id, receiver_id, content) VALUES (?, ?, ?)")
+            .run(req.user.id, receiverId, content);
+        
+        const message = {
+            id: result.lastInsertRowid,
+            sender_id: req.user.id,
+            receiver_id: receiverId,
+            content,
+            created_at: new Date().toISOString()
+        };
+
+        io.emit("new_alumni_message", message);
+        res.json(message);
+    });
+
+    // Admin Alumni CRUD
+    app.get("/api/admin/alumni", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const alumniList = db.prepare(`
+            SELECT u.id, u.name, u.email, u.department, u.avatar_url, ap.company, ap.job_title, ap.skills, ap.batch_year, ap.is_verified, ap.is_mentor_available
+            FROM users u
+            LEFT JOIN alumni_profiles ap ON u.id = ap.user_id
+            WHERE u.role = 'alumni'
+        `).all();
+        res.json(alumniList);
+    });
+
+    app.post("/api/admin/alumni/verify", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { userId, isVerified } = req.body;
+        db.prepare("UPDATE alumni_profiles SET is_verified = ? WHERE user_id = ?").run(isVerified ? 1 : 0, userId);
+        res.json({ success: true });
+    });
+
+    app.post("/api/admin/alumni/update", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { userId, company, jobTitle, skills, batchYear } = req.body;
+        db.prepare(`
+            UPDATE alumni_profiles SET company = ?, job_title = ?, skills = ?, batch_year = ? WHERE user_id = ?
+        `).run(company, jobTitle, skills, batchYear, userId);
+        res.json({ success: true });
+    });
+
+    app.delete("/api/admin/alumni/:userId", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const uid = req.params.userId;
+        db.prepare("DELETE FROM alumni_profiles WHERE user_id = ?").run(uid);
+        db.prepare("DELETE FROM users WHERE id = ?").run(uid);
+        res.json({ success: true });
+    });
+
+    app.post("/api/admin/alumni/add", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Forbidden" });
+        const { name, email, department, company, jobTitle, skills, batchYear, summary } = req.body;
+        try {
+            const pass = bcrypt.hashSync("pass123", 10);
+            const userRes = db.prepare("INSERT INTO users (name, email, password, role, department) VALUES (?, ?, ?, ?, ?)").run(
+                name, email, pass, 'alumni', department
+            );
+            const userId = userRes.lastInsertRowid;
+            db.prepare(`
+                INSERT INTO alumni_profiles (user_id, company, job_title, skills, batch_year, is_verified, is_mentor_available, summary)
+                VALUES (?, ?, ?, ?, ?, 1, 0, ?)
+            `).run(userId, company, jobTitle, skills, batchYear, summary);
+            res.json({ success: true, userId });
+        } catch (e: any) {
+            res.status(400).json({ message: e.message || "Failed to add alumni" });
         }
     });
 
@@ -1210,7 +1506,7 @@ async function startServer() {
         const { 
             contact, achievements, address, dob, gender, 
             blood_group, father_name, mother_name, 
-            guardian_contact, enrollment_year 
+            guardian_contact, enrollment_year, section
         } = req.body;
         
         const user = db.prepare("SELECT role FROM users WHERE id = ?").get(req.user.id) as any;
@@ -1226,12 +1522,12 @@ async function startServer() {
                     contact = ?, achievements = ?, address = ?, dob = ?, 
                     gender = ?, blood_group = ?, father_name = ?, 
                     mother_name = ?, guardian_contact = ?, enrollment_year = ?,
-                    has_updated_profile = 1, can_edit_profile = 0
+                    section = ?, has_updated_profile = 1, can_edit_profile = 0
                 WHERE user_id = ?
             `).run(
-                contact, achievements, address, dob, gender, 
-                blood_group, father_name, mother_name, 
-                guardian_contact, enrollment_year, req.user.id
+                contact, achievements, address, dob, gender, blood_group, 
+                father_name, mother_name, guardian_contact, enrollment_year, 
+                section || 'A', req.user.id
             );
             
             // Allow name update if not locked
@@ -1630,12 +1926,34 @@ async function startServer() {
                 conditions.push("te.faculty_id = ?");
                 params.push(facultyId);
             } else if (studentId) {
-                const student = db.prepare("SELECT semester, department FROM students WHERE user_id = ?").get(studentId) as any;
+                const student = db.prepare(`
+                    SELECT s.semester, s.section, u.department 
+                    FROM students s 
+                    JOIN users u ON s.user_id = u.id 
+                    WHERE u.id = ?
+                `).get(studentId) as any;
                 if (student) {
-                    conditions.push("t.semester = ? AND t.department = ?");
-                    params.push(student.semester, student.department);
+                    conditions.push("t.semester = ? AND t.department = ? AND t.section = ?");
+                    params.push(student.semester, student.department, student.section);
                 } else {
-                    return res.json([]); // No student info found
+                    return res.json([]);
+                }
+            } else if (!department && !semester && !section) {
+                // Auto-sync based on logged in user
+                if (req.user.role === 'student') {
+                    const student = db.prepare(`
+                        SELECT s.semester, s.section, u.department 
+                        FROM students s 
+                        JOIN users u ON s.user_id = u.id 
+                        WHERE u.id = ?
+                    `).get(req.user.id) as any;
+                    if (student) {
+                        conditions.push("t.semester = ? AND t.department = ? AND t.section = ?");
+                        params.push(student.semester, student.department, student.section);
+                    }
+                } else if (req.user.role === 'faculty') {
+                    conditions.push("te.faculty_id = ?");
+                    params.push(req.user.id);
                 }
             } else {
                 if (department) {
@@ -2134,50 +2452,12 @@ async function startServer() {
         res.json(data);
     });
 
-    app.post("/api/attendance/qr-generate", authenticateToken, (req: any, res) => {
-        if (req.user.role !== "faculty" && req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-        const { subjectId, latitude, longitude } = req.body;
-        const qrToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-        
-        db.prepare("DELETE FROM attendance_qr WHERE subject_id = ?").run(subjectId);
-        db.prepare("INSERT INTO attendance_qr (subject_id, faculty_id, qr_token, expires_at, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?)").run(
-            subjectId, req.user.id, qrToken, expiresAt, latitude, longitude
-        );
-        res.json({ qrToken, expiresAt });
-    });
-
-    app.post("/api/attendance/qr-scan", authenticateToken, (req: any, res) => {
-        if (req.user.role !== "student") return res.status(403).json({ message: "Forbidden" });
-        const { qrToken, latitude, longitude } = req.body;
-        
-        const qr = db.prepare("SELECT * FROM attendance_qr WHERE qr_token = ?").get(qrToken) as any;
-        if (!qr) return res.status(400).json({ message: "Invalid or expired QR code" });
-        if (new Date(qr.expires_at) < new Date()) return res.status(400).json({ message: "QR code has expired" });
-
-        // Geometric boundary check (simulated)
-        if (qr.latitude && qr.longitude && latitude && longitude) {
-            const diff = Math.abs(qr.latitude - latitude) + Math.abs(qr.longitude - longitude);
-            if (diff > 0.005) return res.status(400).json({ message: "Location mismatch! You must be near the marked classroom." });
-        }
-
-        const student = db.prepare("SELECT id FROM students WHERE user_id = ?").get(req.user.id) as any;
-        const today = new Date().toISOString().split('T')[0];
-        
-        try {
-            db.prepare("INSERT INTO attendance (student_id, subject_id, date, status) VALUES (?, ?, ?, 'present')").run(
-                student.id, qr.subject_id, today
-            );
-            res.json({ success: true });
-        } catch (e) {
-            res.status(400).json({ message: "Attendance already marked or error occurred" });
-        }
-    });
+    // Deleted QR routes
 
     // Admin: Add Student
     app.post("/api/admin/students", authenticateToken, (req: any, res) => {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
-        const { name, email, password, rollNumber, semester, department } = req.body;
+        const { name, email, password, rollNumber, semester, department, section } = req.body;
         const hashedPassword = bcrypt.hashSync(password, 10);
         
         try {
@@ -2185,8 +2465,8 @@ async function startServer() {
                 name, email, hashedPassword, "student", department
             );
             const userId = result.lastInsertRowid;
-            db.prepare("INSERT INTO students (user_id, roll_number, semester) VALUES (?, ?, ?)").run(
-                userId, rollNumber, semester
+            db.prepare("INSERT INTO students (user_id, roll_number, semester, section) VALUES (?, ?, ?, ?)").run(
+                userId, rollNumber, semester, section || 'A'
             );
             res.json({ success: true });
         } catch (e) {

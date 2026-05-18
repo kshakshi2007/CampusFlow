@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
-    role TEXT CHECK(role IN ('student', 'faculty', 'admin', 'librarian')) NOT NULL,
+    role TEXT CHECK(role IN ('student', 'faculty', 'admin', 'librarian', 'alumni')) NOT NULL,
     department TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS students (
     user_id INTEGER NOT NULL,
     roll_number TEXT UNIQUE NOT NULL,
     semester INTEGER NOT NULL,
+    section TEXT NOT NULL DEFAULT 'A',
     cgpa REAL DEFAULT 0.0,
     backlogs INTEGER DEFAULT 0,
     markscard_url TEXT,
@@ -288,4 +289,54 @@ CREATE TABLE IF NOT EXISTS substitution_requests (
     FOREIGN KEY (entry_id) REFERENCES timetable_entries(id),
     FOREIGN KEY (faculty_id) REFERENCES users(id),
     FOREIGN KEY (substitute_faculty_id) REFERENCES users(id)
+);
+
+-- Alumni Hub Extensions
+CREATE TABLE IF NOT EXISTS alumni_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    company TEXT,
+    job_title TEXT,
+    skills TEXT, -- Comma separated tags
+    batch_year INTEGER,
+    is_verified INTEGER DEFAULT 0,
+    is_mentor_available INTEGER DEFAULT 0,
+    linked_in_url TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS alumni_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requester_id INTEGER NOT NULL,
+    receiver_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending', -- pending, accepted, rejected
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(requester_id, receiver_id),
+    FOREIGN KEY(requester_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS mentorship_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    mentor_id INTEGER NOT NULL,
+    topic TEXT NOT NULL, -- Career Guidance, Mock Interview, Technical Review
+    mode TEXT NOT NULL, -- Virtual, In-person
+    date_time DATETIME NOT NULL,
+    pitch TEXT,
+    status TEXT DEFAULT 'pending', -- pending, accepted, rejected, completed
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(student_id) REFERENCES users(id),
+    FOREIGN KEY(mentor_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS alumni_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    receiver_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(sender_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id)
 );
