@@ -6,7 +6,7 @@ import {
     Bell, LogOut, User, GraduationCap, Clock, AlertCircle,
     ChevronRight, BookMarked, ShieldCheck, Users, BarChart3, FileText,
     MapPin, Phone, Award, QrCode, UserCircle, ArrowLeft, Plus, Target, Music, Trophy, Star, Image, Download, CheckCircle, X, Camera, FileUp,
-    Library, Trash2, Home, AlertTriangle, Menu
+    Library, Trash2, Home, AlertTriangle, Menu, Edit, Grid, Box, Filter, Save
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../context/AuthContext';
@@ -87,19 +87,19 @@ export default function Dashboard() {
                 if (user?.role === 'librarian') return <LibrarianDashboard token={token!} />;
                 return <FacultyDashboard data={data} user={user} />; // Default
             case 'Academic':
-                return <AcademicDashboardView token={token!} />;
+                return <AcademicDashboardView token={token!} user={user!} setActiveTab={setActiveTab} />;
             case 'Study Materials':
                 return <StudyMaterialsView token={token!} user={user!} />;
             case 'Events':
                 return <EventsView token={token!} user={user!} />;
             case 'Timetable':
-                return <TimetableView token={token!} user={user!} />;
+                return <TimetableView token={token!} user={user!} data={data} />;
             case 'Lost & Found':
                 return <LostFoundView token={token!} user={user!} />;
             case 'Fees':
                 return user?.role === 'student' || user?.role === 'admin' ? <FeesView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Fees are restricted to Students and Admins.</div>;
             case 'Admin Panel':
-                return user?.role === 'admin' ? <AdminPanelView token={token!} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
+                return user?.role === 'admin' ? <AdminPanelView token={token!} setActiveTab={setActiveTab} /> : <div className="p-8 text-center text-gray-500">Access Denied: Admin only.</div>;
             case 'Alumni':
                 return <AlumniView token={token!} user={user!} />;
             case 'Book Scanner':
@@ -189,7 +189,7 @@ export default function Dashboard() {
                         <div className="flex items-center gap-4">
                             <button 
                                 onClick={() => setIsMobileMenuOpen(true)}
-                                className="lg:hidden p-2 bg-white border border-gray-100 rounded-xl shadow-sm text-gray-500"
+                                className="lg:hidden p-3 bg-[#7C3AED] text-white rounded-2xl shadow-xl shadow-purple-200 active:scale-95 transition-all"
                             >
                                 <Menu className="w-6 h-6" />
                             </button>
@@ -755,16 +755,21 @@ function StudyMaterialsView({ token, user }: { token: string, user: any }) {
         <div className="space-y-8">
             <div className="flex flex-wrap gap-4 items-center justify-between">
                 <div className="flex gap-4">
-                    <select 
-                        className="px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm outline-none"
-                        value={filter.department}
-                        onChange={(e) => setFilter({...filter, department: e.target.value})}
-                    >
-                        <option value="">All Courses</option>
-                        <option value="CSE">CSE</option>
-                        <option value="ISE">ISE</option>
-                        <option value="ECE">ECE</option>
-                    </select>
+                        <select 
+                            className="px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm outline-none"
+                            value={filter.department}
+                            onChange={(e) => setFilter({...filter, department: e.target.value})}
+                        >
+                            <option value="">All Courses</option>
+                            <option value="CSE">CSE</option>
+                            <option value="ISE">ISE</option>
+                            <option value="ECE">ECE</option>
+                            <option value="MECH">MECH</option>
+                            <option value="CIVIL">CIVIL</option>
+                            <option value="DS">DS</option>
+                            <option value="AI">AI</option>
+                            <option value="EEE">EEE</option>
+                        </select>
                     <select 
                         className="px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm outline-none"
                         value={filter.semester}
@@ -1779,7 +1784,7 @@ function EventsView({ user, token }: { user: any, token: string }) {
     );
 }
 
-function TimetableView({ token, user }: { token: string, user: any }) {
+function TimetableView({ token, user, data }: { token: string, user: any, data: any }) {
     const [slots, setSlots] = useState<any[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [timetables, setTimetables] = useState<any[]>([]);
@@ -1899,38 +1904,35 @@ function TimetableView({ token, user }: { token: string, user: any }) {
     const handleManualEntry = async (e: React.FormEvent) => {
         e.preventDefault();
         const formData = new FormData(e.target as HTMLFormElement);
-        const res = await fetch('/api/admin/timetable/entry', {
+        const res = await fetch('/api/admin/timetable-entries', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({
-                timetableId: selectedTimetable.id,
-                subjectId: parseInt(formData.get('subjectId') as string),
-                facultyId: parseInt(formData.get('facultyId') as string),
-                roomId: parseInt(formData.get('roomId') as string),
-                timeSlotId: parseInt(preSelectedSlot?.id || formData.get('timeSlotId'))
+                timetable_id: selectedTimetable.id,
+                subject_id: parseInt(formData.get('subjectId') as string),
+                faculty_id: parseInt(formData.get('facultyId') as string),
+                room_id: parseInt(formData.get('roomId') as string),
+                time_slot_id: parseInt(preSelectedSlot?.id || formData.get('timeSlotId'))
             })
         });
         if (res.ok) {
             setIsAddEntryOpen(false);
             setPreSelectedSlot(null);
-            const url = `/api/timetable?timetableId=${selectedTimetable.id}`;
-            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(res => res.json()).then(setEntries);
+            // Refresh entries using the common fetch logic or trigger refreshTrigger
+            setRefreshTrigger(prev => prev + 1);
         } else {
             const data = await res.json();
-            alert(data.message);
+            alert(data.error || data.message || "Conflict detected or invalid entry");
         }
     };
 
     const handleDeleteEntry = async (entryId: number) => {
-        const res = await fetch(`/api/admin/timetable/entry/${entryId}`, {
+        const res = await fetch(`/api/admin/timetable-entries/${entryId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
-            const url = `/api/timetable?timetableId=${selectedTimetable.id}`;
-            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(res => res.json()).then(setEntries);
+            setRefreshTrigger(prev => prev + 1);
         }
     };
 
@@ -1992,36 +1994,82 @@ function TimetableView({ token, user }: { token: string, user: any }) {
         }
     };
 
+    const isCurrentClass = (day: string, startTime: string, endTime: string) => {
+        const now = new Date();
+        const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+        if (day !== currentDay) return false;
+
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+
+        const [sh, sm] = startTime.split(':').map(Number);
+        const start = sh * 60 + sm;
+
+        const [eh, em] = endTime.split(':').map(Number);
+        const end = eh * 60 + em;
+
+        return currentTime >= start && currentTime < end;
+    };
+
+    const departments = ["CSE", "ISE", "ECE", "MECH", "CIVIL", "DS", "AI", "EEE"];
+
     return (
         <div className="space-y-8 pb-20">
-            <div className="flex gap-4">
-                <button 
-                    onClick={() => setActiveTimetableTab('grid')}
-                    className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTimetableTab === 'grid' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-100' : 'bg-white text-gray-400 hover:text-gray-600'}`}
-                >
-                    Weekly Grid
-                </button>
-                {user.role === 'admin' && (
+            <div className="flex flex-col md:flex-row gap-6 justify-between items-end">
+                <div className="flex gap-4">
                     <button 
-                        onClick={() => setActiveTimetableTab('requests')}
-                        className={`px-6 py-2 rounded-xl text-sm font-bold transition-all relative ${activeTimetableTab === 'requests' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-100' : 'bg-white text-gray-400 hover:text-gray-600'}`}
+                        onClick={() => setActiveTimetableTab('grid')}
+                        className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTimetableTab === 'grid' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-100' : 'bg-white text-gray-400 hover:text-gray-600'}`}
                     >
-                        Substitution Requests
-                        {subRequests.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] flex items-center justify-center rounded-full animate-pulse">{subRequests.length}</span>}
+                        Weekly Grid
                     </button>
+                    {user.role === 'admin' && (
+                        <button 
+                            onClick={() => setActiveTimetableTab('requests')}
+                            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all relative ${activeTimetableTab === 'requests' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-100' : 'bg-white text-gray-400 hover:text-gray-600'}`}
+                        >
+                            Substitution Requests
+                            {subRequests.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] flex items-center justify-center rounded-full animate-pulse">{subRequests.length}</span>}
+                        </button>
+                    )}
+                </div>
+
+                {user.role === 'admin' && (
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <select 
+                            className="bg-white border border-gray-100 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500"
+                            onChange={(e) => {
+                                const [dept, sem] = e.target.value.split('|');
+                                setSelectedTimetable(timetables.find(t => t.department === dept && t.semester === parseInt(sem)));
+                            }}
+                            value={selectedTimetable ? `${selectedTimetable.department}|${selectedTimetable.semester}` : ''}
+                        >
+                            <option value="">Select Department & Semester</option>
+                            {timetables.map(t => (
+                                <option key={t.id} value={`${t.department}|${t.semester}`}>
+                                    {t.department} - Sem {t.semester}
+                                </option>
+                            ))}
+                        </select>
+                        <button 
+                            onClick={() => setIsGenerationOpen(true)}
+                            className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-purple-700 transition-all shadow-md shadow-purple-100"
+                        >
+                            + New Timetable
+                        </button>
+                    </div>
                 )}
             </div>
 
             {activeTimetableTab === 'grid' ? (
                 <>
                     <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                        <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
                                 <h3 className="text-lg font-bold text-[#1F2937]">
                                     {user.role === 'admin' ? (selectedTimetable ? `${selectedTimetable.department} Semester ${selectedTimetable.semester} Section ${selectedTimetable.section}` : 'General Grid') : 
-                                     user.role === 'faculty' ? 'Your Teaching Schedule' : 'Your Class Timetable'}
+                                     user.role === 'faculty' ? 'Your Teaching Schedule' : `${user.department} Semester ${data?.currentStudent?.semester || 'N/A'} Timetable`}
                                 </h3>
-                                <p className="text-xs text-[#6B7280]">Weekly schedule view</p>
+                                <p className="text-xs text-[#6B7280]">Weekly schedule view {user.role === 'student' && '(Automatically filtered for you)'}</p>
                             </div>
                             {user.role === 'admin' && selectedTimetable && (
                                 <div className="flex gap-2">
@@ -2062,8 +2110,16 @@ function TimetableView({ token, user }: { token: string, user: any }) {
                                             <td className="px-6 py-8 font-bold text-[#1F2937] border-r border-gray-50 bg-gray-50/20">{day}</td>
                                             {periodNumbers.map(p => {
                                                 const slotEntries = getEntries(day, p);
+                                                const slot = slots.find(s => s.period_number === p);
+                                                const isCurrent = slot && isCurrentClass(day, slot.start_time, slot.end_time);
+                                                
                                                 return (
-                                                    <td key={p} className="p-3 border-r border-gray-100 relative min-w-[180px] h-40">
+                                                    <td key={p} className={`p-3 border-r border-gray-100 relative min-w-[200px] h-44 transition-all ${isCurrent ? 'bg-purple-50/50 ring-2 ring-inset ring-purple-100' : ''}`}>
+                                                        {isCurrent && (
+                                                            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-purple-600 text-white text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider z-20">
+                                                                Current Class
+                                                            </div>
+                                                        )}
                                                         <div className="relative w-full h-full group/slot perspective-1000">
                                                             {slotEntries.length > 0 ? (
                                                                 slotEntries.map((entry, idx) => (
@@ -2085,7 +2141,7 @@ function TimetableView({ token, user }: { token: string, user: any }) {
                                                                         }}
                                                                         className={`absolute inset-0 p-4 rounded-2xl border-l-4 shadow-md flex flex-col justify-between group/entry cursor-pointer bg-white border-none overflow-hidden transition-all duration-300 ring-1 ring-black/5 ${
                                                                             entry.room_type === 'lab' ? 'hover:shadow-orange-200/50' : 'hover:shadow-purple-200/50'
-                                                                        } ${entry.is_substitution ? 'ring-2 ring-blue-400' : ''}`}
+                                                                        } ${isCurrent ? 'ring-2 ring-purple-400 bg-white' : ''} ${entry.is_substitution ? 'ring-2 ring-blue-400' : ''}`}
                                                                         style={{ zIndex: 10 - idx }}
                                                                         onClick={() => {
                                                                             if (user.role === 'admin' || user.role === 'faculty') {
@@ -2094,7 +2150,7 @@ function TimetableView({ token, user }: { token: string, user: any }) {
                                                                             }
                                                                         }}
                                                                     >
-                                                                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${entry.room_type === 'lab' ? 'bg-orange-500' : 'bg-[#7C3AED]'}`} />
+                                                                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${entry.room_type === 'lab' ? 'bg-orange-500' : 'bg-[#7C3AED]'}`} />
                                                                         <div className="absolute top-0 right-0 p-2 opacity-0 group-hover/entry:opacity-100 transition-opacity z-10">
                                                                             {user.role === 'admin' && (
                                                                                 <button 
@@ -2310,7 +2366,10 @@ function TimetableView({ token, user }: { token: string, user: any }) {
                         <form className="space-y-4" onSubmit={handleCreateTimetable}>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Department</label>
-                                <input name="department" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none font-bold text-sm" placeholder="e.g. Computer Science" />
+                                <select name="department" required className="w-full px-4 py-3 bg-gray-50 rounded-xl border-none font-bold text-sm outline-none focus:ring-2 focus:ring-purple-500">
+                                    <option value="">Select Department</option>
+                                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
@@ -3027,11 +3086,10 @@ function LibrarianDashboard({ token }: { token: string }) {
     );
 }
 
-function AdminPanelView({ token }: { token: string }) {
+function AdminPanelView({ token, setActiveTab }: { token: string, setActiveTab: (tab: string) => void }) {
     const [students, setStudents] = useState<any[]>([]);
     const [teachers, setTeachers] = useState<any[]>([]);
     const [directoryTab, setDirectoryTab] = useState<'students' | 'faculty'>('students');
-    const [subjects, setSubjects] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDept, setFilterDept] = useState('');
     const [filterSem, setFilterSem] = useState('');
@@ -3039,8 +3097,6 @@ function AdminPanelView({ token }: { token: string }) {
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isAddFacultyOpen, setIsAddFacultyOpen] = useState(false);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
-    const [isSubjectAssignOpen, setIsSubjectAssignOpen] = useState(false);
-    const [pendingAssignments, setPendingAssignments] = useState<{[key: number]: number}>({});
     const [editingStudent, setEditingStudent] = useState<any>(null);
     const [addingFee, setAddingFee] = useState<any>(null);
 
@@ -3048,9 +3104,6 @@ function AdminPanelView({ token }: { token: string }) {
         fetch('/api/admin/students', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(async res => (res.ok ? await safeJson(res) : []) || [])
             .then(setStudents);
-        fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(async res => (res.ok ? await safeJson(res) : []) || [])
-            .then(setSubjects);
         fetch('/api/admin/faculty', { headers: { 'Authorization': `Bearer ${token}` } })
             .then(async res => (res.ok ? await safeJson(res) : []) || [])
             .then(setTeachers);
@@ -3152,7 +3205,11 @@ function AdminPanelView({ token }: { token: string }) {
                                 <option value="CSE">CSE</option>
                                 <option value="ISE">ISE</option>
                                 <option value="ECE">ECE</option>
-                                <option value="ALML">ALML</option>
+                                <option value="MECH">MECH</option>
+                                <option value="CIVIL">CIVIL</option>
+                                <option value="DS">DS</option>
+                                <option value="AI">AI</option>
+                                <option value="EEE">EEE</option>
                             </select>
                             {directoryTab === 'students' && (
                                 <select 
@@ -3215,14 +3272,6 @@ function AdminPanelView({ token }: { token: string }) {
                                 Add Faculty
                             </motion.button>
                         )}
-                        
-                        <motion.button 
-                            whileHover={{ scale: 1.05 }}
-                            onClick={() => setIsSubjectAssignOpen(true)} 
-                            className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-100"
-                        >
-                            Assign Teachers
-                        </motion.button>
                     </div>
                 </div>
 
@@ -3315,7 +3364,11 @@ function AdminPanelView({ token }: { token: string }) {
                                 <option value="CSE">CSE</option>
                                 <option value="ISE">ISE</option>
                                 <option value="ECE">ECE</option>
-                                <option value="ALML">ALML</option>
+                                <option value="MECH">MECH</option>
+                                <option value="CIVIL">CIVIL</option>
+                                <option value="DS">DS</option>
+                                <option value="AI">AI</option>
+                                <option value="EEE">EEE</option>
                             </select>
                             <button type="submit" className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold">Create Faculty</button>
                             <button type="button" onClick={() => setIsAddFacultyOpen(false)} className="w-full py-2 text-gray-500">Cancel</button>
@@ -3421,70 +3474,279 @@ function AdminPanelView({ token }: { token: string }) {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
 
-            {isSubjectAssignOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
-                    <div className="bg-white w-full max-w-4xl rounded-[40px] p-10 relative my-8">
-                        <button onClick={() => setIsSubjectAssignOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
-                            <X className="w-6 h-6" />
-                        </button>
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-2xl font-bold">Assign Teachers to Subjects</h3>
-                            {Object.keys(pendingAssignments).length > 0 && (
-                                <button 
-                                    onClick={async () => {
-                                        const results = await Promise.all(
-                                            Object.entries(pendingAssignments).map(async ([subId, teacherId]) => {
-                                                if (!teacherId) return { ok: true };
-                                                return fetch('/api/admin/subjects/teacher', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                                    body: JSON.stringify({ subjectId: parseInt(subId), teacherId: teacherId })
-                                                });
-                                            })
-                                        );
-                                        if (results.every(r => r.ok)) {
-                                            alert('All changes saved successfully!');
-                                            // Refresh subjects to get new teacher names or update locally
-                                            const newSubjects = [...subjects];
-                                            Object.entries(pendingAssignments).forEach(([subId, teacherId]) => {
-                                                const subIndex = newSubjects.findIndex(s => s.id === parseInt(subId));
-                                                const teacher = teachers.find(t => t.id === teacherId);
-                                                if (subIndex !== -1 && teacher) {
-                                                    newSubjects[subIndex] = { ...newSubjects[subIndex], teacher_name: teacher.name };
-                                                }
-                                            });
-                                            setSubjects(newSubjects);
-                                            setPendingAssignments({});
-                                        }
-                                    }}
-                                    className="px-6 py-2 bg-green-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-green-100 hover:bg-green-600 transition-all"
-                                >
-                                    Save All Changes
-                                </button>
-                            )}
+function AcademicDashboardView({ token, user, setActiveTab }: { token: string, user: any, setActiveTab: (tab: string) => void }) {
+    const [academicData, setAcademicData] = useState<any>(null);
+    const [subjects, setSubjects] = useState<any[]>([]);
+    const [rooms, setRooms] = useState<any[]>([]);
+    const [teachers, setTeachers] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    
+    // Management states
+    const [directoryTab, setDirectoryTab] = useState<'view' | 'subjects' | 'schedule'>('view');
+    const [filterDept, setFilterDept] = useState('');
+    const [isAddSubjectOpen, setIsAddSubjectOpen] = useState(false);
+    const [editingSubject, setEditingSubject] = useState<any>(null);
+    const [isSubjectAssignOpen, setIsSubjectAssignOpen] = useState(false);
+    const [pendingAssignments, setPendingAssignments] = useState<{[key: number]: number}>({});
+
+    useEffect(() => {
+        if (user.role === 'admin') {
+            setLoading(true);
+            Promise.all([
+                fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()),
+                fetch('/api/rooms', { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()),
+                fetch('/api/admin/faculty', { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json())
+            ]).then(([subs, rms, tchs]) => {
+                setSubjects(subs || []);
+                setRooms(rms || []);
+                setTeachers(tchs || []);
+                setLoading(false);
+            }).catch(console.error);
+        } else {
+            fetch('/api/academic/courses', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(setAcademicData)
+            .catch(console.error)
+            .finally(() => setLoading(false));
+        }
+    }, [token, user.role]);
+
+    const handleAddSubject = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget as HTMLFormElement);
+        const payload = Object.fromEntries(formData.entries());
+        const res = await fetch(editingSubject ? `/api/admin/subjects/${editingSubject.id}` : '/api/admin/subjects', {
+            method: editingSubject ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async res => (res.ok ? await safeJson(res) : []) || [])
+                .then(setSubjects);
+            setIsAddSubjectOpen(false);
+            setEditingSubject(null);
+        }
+    };
+
+    const handleDeleteSubject = async (id: number) => {
+        if (!confirm('Are you sure you want to delete this subject?')) return;
+        const res = await fetch(`/api/admin/subjects/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            setSubjects(subjects.filter(s => s.id !== id));
+        }
+    };
+
+    if (loading) return <div className="p-10 text-center text-gray-400 animate-pulse">Loading academic schedule...</div>;
+
+    if (user.role === 'admin') {
+        return (
+            <div className="space-y-8">
+                <div className="flex gap-4 mb-4">
+                    <button 
+                        onClick={() => setDirectoryTab('view')}
+                        className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${directoryTab === 'view' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-400 hover:bg-gray-50'}`}
+                    >
+                        Overview
+                    </button>
+                    <button 
+                        onClick={() => setDirectoryTab('subjects')}
+                        className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${directoryTab === 'subjects' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-400 hover:bg-gray-50'}`}
+                    >
+                        Manage Subjects
+                    </button>
+                    <button 
+                        onClick={() => setDirectoryTab('schedule')}
+                        className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${directoryTab === 'schedule' ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-200' : 'bg-white text-gray-400 hover:bg-gray-50'}`}
+                    >
+                        Master Schedule
+                    </button>
+                </div>
+
+                {directoryTab === 'view' && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div className="p-8 bg-white rounded-[40px] shadow-sm border border-gray-50">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Total Subjects</p>
+                            <h4 className="text-3xl font-black text-[#1F2937]">{subjects.length}</h4>
                         </div>
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                            <table className="w-full text-left">
-                                <thead className="text-[10px] uppercase font-bold text-gray-400 tracking-widest border-b border-gray-100">
-                                    <tr>
-                                        <th className="py-4">Subject</th>
-                                        <th className="py-4">Department / Sem</th>
-                                        <th className="py-4 text-center">Current Teacher</th>
-                                        <th className="py-4 text-right">Assign New</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {subjects.map(sub => (
-                                        <tr key={sub.id}>
-                                            <td className="py-4">
-                                                <p className="font-bold text-[#1F2937] text-sm">{sub.name}</p>
-                                                <p className="text-[10px] text-gray-400 uppercase">{sub.code}</p>
-                                            </td>
-                                            <td className="py-4 text-sm text-gray-500">{sub.department} - Sem {sub.semester}</td>
-                                            <td className="py-4 text-center text-sm font-medium">{sub.teacher_name || 'Not assigned'}</td>
-                                            <td className="py-4 text-right">
-                                                <div className="flex items-center justify-end gap-2">
+                        <div className="p-8 bg-white rounded-[40px] shadow-sm border border-gray-50">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Dept Coverage</p>
+                            <h4 className="text-3xl font-black text-[#1F2937]">{new Set(subjects.map(s => s.department)).size}</h4>
+                        </div>
+                        <div className="p-8 bg-white rounded-[40px] shadow-sm border border-gray-50">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Active Classrooms</p>
+                            <h4 className="text-3xl font-black text-[#1F2937]">{rooms.length}</h4>
+                        </div>
+                        <div className="p-8 bg-purple-600 rounded-[40px] shadow-lg shadow-purple-100 text-white">
+                            <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-2">Current Academic Year</p>
+                            <h4 className="text-2xl font-black">2025-26</h4>
+                        </div>
+                    </div>
+                )}
+
+                {directoryTab === 'subjects' && (
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-50">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                            <div>
+                                <h3 className="text-xl font-bold text-[#1F2937]">Subject Management</h3>
+                                <p className="text-xs text-gray-400 uppercase font-medium tracking-widest mt-1">Manage Course curriculum and capacities</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <select 
+                                    className="px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none"
+                                    value={filterDept}
+                                    onChange={(e) => setFilterDept(e.target.value)}
+                                >
+                                    <option value="">All Depts</option>
+                                    {["CSE", "ISE", "ECE", "MECH", "CIVIL", "DS", "AI", "EEE", "ALL"].map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                                <button 
+                                    onClick={() => { setEditingSubject(null); setIsAddSubjectOpen(true); }}
+                                    className="px-6 py-2.5 bg-[#7C3AED] text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-100 hover:bg-[#6D28D9] transition-all flex items-center gap-2"
+                                >
+                                    <Plus className="w-4 h-4" /> Add Subject
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {subjects.filter(s => !filterDept || s.department === filterDept).map((s, i) => (
+                                <motion.div 
+                                    key={s.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: i * 0.02 }}
+                                    className="p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-xl hover:shadow-purple-100 transition-all group"
+                                >
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="px-3 py-1 bg-white rounded-full text-[9px] font-black text-[#7C3AED] uppercase tracking-widest shadow-sm">
+                                            {s.code}
+                                        </div>
+                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => { setEditingSubject(s); setIsAddSubjectOpen(true); }} className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-purple-600"><Edit className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDeleteSubject(s.id)} className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                                        </div>
+                                    </div>
+                                    <h4 className="font-bold text-[#1F2937] text-sm mb-4 line-clamp-1">{s.name}</h4>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                            <span>Sem {s.semester} • {s.department}</span>
+                                            <span>{s.credits} Credits</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                            <div className="bg-[#7C3AED] h-full" style={{ width: '65%' }} />
+                                        </div>
+                                        <div className="flex justify-between items-center bg-white px-3 py-2 rounded-xl">
+                                            <span className="text-[10px] font-bold text-gray-400">CAPACITY</span>
+                                            <span className="text-xs font-bold text-[#1F2937]">{s.capacity || 60} Students</span>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {directoryTab === 'schedule' && (
+                    <div className="bg-[#111827] text-white p-10 rounded-[50px] shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-20 opacity-10">
+                            <Calendar className="w-64 h-64 -mr-20 -mt-20" />
+                        </div>
+                        <div className="relative z-10">
+                            <h3 className="text-2xl font-bold mb-2">Master Schedule Control</h3>
+                            <p className="text-gray-400 text-sm mb-10 max-w-md">Edit global timetable entries, assign faculty members to specific rooms, and resolve scheduling conflicts in real-time.</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="p-6 bg-white/5 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer" onClick={() => setActiveTab('Timetable')}>
+                                    <div className="w-12 h-12 bg-purple-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-purple-500/20">
+                                        <Grid className="w-6 h-6 text-white" />
+                                    </div>
+                                    <h4 className="font-bold mb-1">Open 2D Matrix</h4>
+                                    <p className="text-xs text-gray-500">Edit schedule in high-contrast grid mode</p>
+                                </div>
+                                <div className="p-6 bg-white/5 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer">
+                                    <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-orange-500/20">
+                                        <Box className="w-6 h-6 text-white" />
+                                    </div>
+                                    <h4 className="font-bold mb-1">Room Allocation</h4>
+                                    <p className="text-xs text-gray-500">Manage 24 physical learning spaces</p>
+                                </div>
+                                <div className="p-6 bg-white/5 rounded-3xl border border-white/10 hover:bg-white/10 transition-colors cursor-pointer" onClick={() => setIsSubjectAssignOpen(true)}>
+                                    <div className="w-12 h-12 bg-blue-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/20">
+                                        <Users className="w-6 h-6 text-white" />
+                                    </div>
+                                    <h4 className="font-bold mb-1">Faculty Mapping</h4>
+                                    <p className="text-xs text-gray-500">Assign lead teachers to subjects</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {isSubjectAssignOpen && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6 overflow-y-auto">
+                        <div className="bg-white w-full max-w-4xl rounded-[40px] p-10 relative my-8">
+                            <button onClick={() => setIsSubjectAssignOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-2xl font-bold">Assign Teachers to Subjects</h3>
+                                {Object.keys(pendingAssignments).length > 0 && (
+                                    <button 
+                                        onClick={async () => {
+                                            const results = await Promise.all(
+                                                Object.entries(pendingAssignments).map(async ([subId, teacherId]) => {
+                                                    if (!teacherId) return { ok: true };
+                                                    return fetch('/api/admin/subjects/teacher', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                        body: JSON.stringify({ subjectId: parseInt(subId), teacherId: teacherId })
+                                                    });
+                                                })
+                                            );
+                                            if (results.every(r => r.ok)) {
+                                                alert('All changes saved successfully!');
+                                                fetch('/api/subjects', { headers: { 'Authorization': `Bearer ${token}` } })
+                                                    .then(res => res.json())
+                                                    .then(setSubjects);
+                                                setPendingAssignments({});
+                                            }
+                                        }}
+                                        className="px-6 py-2 bg-green-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-green-100 hover:bg-green-600 transition-all"
+                                    >
+                                        Save All Changes
+                                    </button>
+                                )}
+                            </div>
+                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                <table className="w-full text-left">
+                                    <thead className="text-[10px] uppercase font-bold text-gray-400 tracking-widest border-b border-gray-100">
+                                        <tr>
+                                            <th className="py-4">Subject</th>
+                                            <th className="py-4">Department / Sem</th>
+                                            <th className="py-4 text-center">Current Teacher</th>
+                                            <th className="py-4 text-right">Assign New</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50">
+                                        {subjects.map(sub => (
+                                            <tr key={sub.id}>
+                                                <td className="py-4">
+                                                    <p className="font-bold text-[#1F2937] text-sm">{sub.name}</p>
+                                                    <p className="text-[10px] text-gray-400 uppercase">{sub.code}</p>
+                                                </td>
+                                                <td className="py-4 text-sm text-gray-500">{sub.department} - Sem {sub.semester}</td>
+                                                <td className="py-4 text-center text-sm font-medium">{sub.teacher_name || 'Not assigned'}</td>
+                                                <td className="py-4 text-right">
                                                     <select 
                                                         className="px-3 py-1.5 bg-gray-50 rounded-lg text-xs font-bold outline-none border border-gray-100"
                                                         value={pendingAssignments[sub.id] || ''}
@@ -3499,61 +3761,69 @@ function AdminPanelView({ token }: { token: string }) {
                                                         <option value="">Select Teacher...</option>
                                                         {teachers.map(t => <option key={t.id} value={t.id}>{t.name} ({t.department})</option>)}
                                                     </select>
-                                                    {pendingAssignments[sub.id] > 0 && (
-                                                        <button 
-                                                            onClick={async () => {
-                                                                const teacherId = pendingAssignments[sub.id];
-                                                                const res = await fetch('/api/admin/subjects/teacher', {
-                                                                    method: 'POST',
-                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                                                    body: JSON.stringify({ subjectId: sub.id, teacherId })
-                                                                });
-                                                                if (res.ok) {
-                                                                    // Update local state
-                                                                    const teacher = teachers.find(t => t.id === teacherId);
-                                                                    setSubjects(subjects.map(s => s.id === sub.id ? { ...s, teacher_name: teacher?.name } : s));
-                                                                    setPendingAssignments(prev => {
-                                                                        const next = {...prev};
-                                                                        delete next[sub.id];
-                                                                        return next;
-                                                                    });
-                                                                    alert('Teacher assigned successfully!');
-                                                                }
-                                                            }}
-                                                            className="px-3 py-1.5 bg-[#7C3AED] text-white rounded-lg text-xs font-bold shadow-sm hover:bg-purple-700 transition-colors"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
-    );
-}
+                )}
 
-function AcademicDashboardView({ token }: { token: string }) {
-    const [academicData, setAcademicData] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        fetch('/api/academic/courses', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-        .then(res => res.json())
-        .then(setAcademicData)
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    }, [token]);
-
-    if (loading) return <div className="p-10 text-center text-gray-400 animate-pulse">Loading academic schedule...</div>;
+                {isAddSubjectOpen && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/60 backdrop-blur-md z-[70] flex items-center justify-center p-6">
+                        <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white w-full max-w-xl rounded-[40px] p-10 overflow-hidden relative shadow-2xl">
+                            <div className="flex justify-between items-center mb-8">
+                                <h3 className="text-2xl font-bold text-[#1F2937]">{editingSubject ? 'Edit Subject' : 'Add New Subject'}</h3>
+                                <button onClick={() => { setIsAddSubjectOpen(false); setEditingSubject(null); }} className="p-2 bg-gray-50 rounded-full text-gray-400"><X className="w-5 h-5" /></button>
+                            </div>
+                            
+                            <form onSubmit={handleAddSubject} className="space-y-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Subject Code</label>
+                                        <input name="code" defaultValue={editingSubject?.code} required className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm" placeholder="e.g. 21CS41" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Subject Name</label>
+                                        <input name="name" defaultValue={editingSubject?.name} required className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm" placeholder="e.g. Microprocessors" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Department</label>
+                                        <select name="department" defaultValue={editingSubject?.department} required className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm">
+                                            {["CSE", "ISE", "ECE", "MECH", "CIVIL", "DS", "AI", "EEE", "ALL"].map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Semester</label>
+                                        <select name="semester" defaultValue={editingSubject?.semester} required className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm">
+                                            {[1,2,3,4,5,6,7,8].map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Credits</label>
+                                        <input name="credits" type="number" defaultValue={editingSubject?.credits || 3} required className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Capacity</label>
+                                        <input name="capacity" type="number" defaultValue={editingSubject?.capacity || 60} required className="w-full px-4 py-3 bg-gray-50 rounded-2xl border-none outline-none font-bold text-sm" />
+                                    </div>
+                                </div>
+                                <button type="submit" className="w-full py-4 bg-[#7C3AED] text-white rounded-2xl font-bold shadow-lg shadow-purple-100 hover:bg-[#6D28D9] transition-all">
+                                    {editingSubject ? 'Update Subject' : 'Create Subject'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </div>
+        );
+    }
 
     return (
         <motion.div 

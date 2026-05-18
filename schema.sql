@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     semester INTEGER NOT NULL,
     department TEXT NOT NULL,
     credits INTEGER DEFAULT 3,
+    capacity INTEGER DEFAULT 60,
     teacher_id INTEGER,
     UNIQUE(code, department),
     FOREIGN KEY (teacher_id) REFERENCES users(id)

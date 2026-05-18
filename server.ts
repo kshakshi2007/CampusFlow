@@ -13,165 +13,270 @@ const __dirname = path.resolve();
 const db = new Database("campusflow.db");
 const JWT_SECRET = process.env.JWT_SECRET || "campusflow-secret-key";
 
-// VTU Scheme Subjects Data (Refined based on user's curriculum details)
+// VTU Scheme Subjects Data (Refined and Expanded for all branches)
 const vtuScheme: any = {
     common: {
         "1": [
-            { code: "BMAT101", name: "Mathematics-I", credits: 4 },
-            { code: "BPS102", name: "Physics / Chemistry", credits: 4 },
-            { code: "BEEE103", name: "Basic Electrical / Electronics", credits: 3 },
-            { code: "BPRO104", name: "Programming (Python/C)", credits: 3 },
-            { code: "BENG105", name: "Engineering Graphics", credits: 2 },
-            { code: "BLAB106", name: "Labs + Workshop", credits: 3 }
+            { code: "BMAT101", name: "Mathematics-I (Calculus)", credits: 4, typeId: "theory" },
+            { code: "BPS102", name: "Engineering Physics", credits: 4, typeId: "theory" },
+            { code: "BEEE103", name: "Elements of Electrical Eng.", credits: 3, typeId: "theory" },
+            { code: "BPRO104", name: "Programming in C", credits: 3, typeId: "theory" },
+            { code: "BENG105", name: "Engineering Graphics", credits: 2, typeId: "theory" },
+            { code: "BPL106", name: "Physics Lab", credits: 1, typeId: "lab" },
+            { code: "BCL107", name: "C Programming Lab", credits: 1, typeId: "lab" }
         ],
         "2": [
-            { code: "BMAT201", name: "Mathematics-II", credits: 4 },
-            { code: "BPS202", name: "Physics / Chemistry (Other)", credits: 4 },
-            { code: "BDS203", name: "Data Structures (Intro)", credits: 3 },
-            { code: "BCPS204", name: "Basic Civil / Mechanical", credits: 3 },
-            { code: "BEVS205", name: "Environmental Studies", credits: 2 },
-            { code: "BLAB206", name: "Labs", credits: 3 }
+            { code: "BMAT201", name: "Mathematics-II (Diff Eq)", credits: 4, typeId: "theory" },
+            { code: "BCH202", name: "Engineering Chemistry", credits: 4, typeId: "theory" },
+            { code: "BCS203", name: "Computer Aided Design", credits: 3, typeId: "theory" },
+            { code: "BEV204", name: "Environmental Science", credits: 2, typeId: "theory" },
+            { code: "BEM205", name: "Elements of Civil Eng.", credits: 3, typeId: "theory" },
+            { code: "CHL206", name: "Chemistry Lab", credits: 1, typeId: "lab" },
+            { code: "CPL207", name: "CAD Lab", credits: 1, typeId: "lab" }
         ]
     },
     "CSE": {
         "3": [
-            { code: "BMAT301", name: "Mathematics-III", credits: 4 },
-            { code: "BCS302", name: "Data Structures & Applications", credits: 4 },
-            { code: "BCS303", name: "Digital Design", credits: 3 },
-            { code: "BCS304", name: "Computer Organization", credits: 3 },
-            { code: "BCS305", name: "Discrete Mathematics", credits: 3 },
-            { code: "BLAB306", name: "Labs", credits: 3 }
+            { code: "BCS301", name: "Digital Design", credits: 4, typeId: "theory" },
+            { code: "BCS302", name: "Data Structures", credits: 4, typeId: "theory" },
+            { code: "BCS303", name: "Computer Org & Arch", credits: 3, typeId: "theory" },
+            { code: "BCS304", name: "Discrete Math", credits: 3, typeId: "theory" },
+            { code: "BCSL305", name: "DS Lab", credits: 2, typeId: "lab" }
         ],
         "4": [
-            { code: "BMAT401", name: "Mathematics-IV", credits: 4 },
-            { code: "BCS402", name: "Design & Analysis of Algorithms", credits: 4 },
-            { code: "BCS403", name: "Operating Systems", credits: 3 },
-            { code: "BCS404", name: "Microcontrollers", credits: 3 },
-            { code: "BCS405", name: "Database Management Systems", credits: 3 },
-            { code: "BLAB406", name: "Labs", credits: 3 }
+            { code: "BCS401", name: "DB Management Systems", credits: 4, typeId: "theory" },
+            { code: "BCS402", name: "Analysis of Algorithms", credits: 4, typeId: "theory" },
+            { code: "BCS403", name: "Operating Systems", credits: 3, typeId: "theory" },
+            { code: "BCSL404", name: "DBMS Lab", credits: 2, typeId: "lab" }
         ],
         "5": [
-            { code: "BCS501", name: "Computer Networks", credits: 4 },
-            { code: "BCS502", name: "Automata Theory", credits: 3 },
-            { code: "BCS503", name: "Software Engineering", credits: 3 },
-            { code: "BCS504", name: "AI / ML (intro)", credits: 3 },
-            { code: "BCSE505", name: "Elective 1", credits: 3 },
-            { code: "BLAB506", name: "Labs", credits: 3 }
+            { code: "BCS501", name: "Computer Networks", credits: 4, typeId: "theory" },
+            { code: "BCS502", name: "Automata Theory", credits: 3, typeId: "theory" },
+            { code: "BCS503", name: "Software Engineering", credits: 3, typeId: "theory" },
+            { code: "BCSL504", name: "Networks Lab", credits: 2, typeId: "lab" }
         ],
         "6": [
-            { code: "BCS601", name: "Machine Learning / Data Mining", credits: 4 },
-            { code: "BCS602", name: "Compiler Design", credits: 3 },
-            { code: "BCS603", name: "Cloud Computing", credits: 3 },
-            { code: "BCSE604", name: "Elective 2", credits: 3 },
-            { code: "BPRO605", name: "Mini Project", credits: 2 },
-            { code: "BLAB606", name: "Labs", credits: 2 }
+            { code: "BCS601", name: "Machine Learning", credits: 4, typeId: "theory" },
+            { code: "BCS602", name: "Cloud Computing", credits: 3, typeId: "theory" },
+            { code: "BCS603", name: "Cryptography", credits: 3, typeId: "theory" },
+            { code: "BCSL604", name: "ML Lab", credits: 2, typeId: "lab" }
         ],
         "7": [
-            { code: "BCS701", name: "Big Data / Advanced Topics", credits: 3 },
-            { code: "BCSE702", name: "Elective 3", credits: 3 },
-            { code: "BCSE703", name: "Elective 4", credits: 3 },
-            { code: "BINT704", name: "Internship", credits: 2 },
-            { code: "BPR1705", name: "Project Phase 1", credits: 4 }
+            { code: "BCS701", name: "Big Data Analytics", credits: 4, typeId: "theory" },
+            { code: "BCS702", name: "IoT & Wireless Nets", credits: 3, typeId: "theory" },
+            { code: "BCS703", name: "Project Phase 1", credits: 2, typeId: "theory" }
         ],
         "8": [
-            { code: "BPR2801", name: "Project Phase 2", credits: 8 },
-            { code: "BSEM802", name: "Seminar", credits: 2 },
-            { code: "BMOOC803", name: "Internship / MOOC", credits: 2 }
+            { code: "BCS801", name: "Professional Ethics", credits: 3, typeId: "theory" },
+            { code: "BCS802", name: "Project Phase 2", credits: 8, typeId: "theory" }
         ]
     },
     "ISE": {
         "3": [
-            { code: "BMAT301", name: "Mathematics-III", credits: 4 },
-            { code: "BCS302", name: "Data Structures & Applications", credits: 4 },
-            { code: "BCS303", name: "Digital Design", credits: 3 },
-            { code: "BCS304", name: "Computer Organization", credits: 3 },
-            { code: "BCS305", name: "Discrete Mathematics", credits: 3 },
-            { code: "BLAB306", name: "Labs", credits: 3 }
+            { code: "BIS301", name: "Logic Design", credits: 4, typeId: "theory" },
+            { code: "BIS302", name: "Data Structures", credits: 4, typeId: "theory" },
+            { code: "BIS303", name: "UNIX Programming", credits: 3, typeId: "theory" },
+            { code: "BISL304", name: "DS Lab", credits: 2, typeId: "lab" }
         ],
         "4": [
-            { code: "BMAT401", name: "Mathematics-IV", credits: 4 },
-            { code: "BCS402", name: "Design & Analysis of Algorithms", credits: 4 },
-            { code: "BCS403", name: "Operating Systems", credits: 3 },
-            { code: "BCS404", name: "Microcontrollers", credits: 3 },
-            { code: "BCS405", name: "Database Management Systems", credits: 3 },
-            { code: "BLAB406", name: "Labs", credits: 3 }
+            { code: "BIS401", name: "Object Oriented Java", credits: 4, typeId: "theory" },
+            { code: "BIS402", name: "Software Eng", credits: 4, typeId: "theory" },
+            { code: "BIS403", name: "Graph Theory", credits: 3, typeId: "theory" },
+            { code: "BISL404", name: "Java Lab", credits: 2, typeId: "lab" }
         ],
         "5": [
-            { code: "BIS501", name: "Computer Networks", credits: 4 },
-            { code: "BIS502", name: "Information Systems", credits: 3 },
-            { code: "BIS503", name: "Software Engineering", credits: 3 },
-            { code: "BIS504", name: "Data Analytics / AI", credits: 3 },
-            { code: "BISE505", name: "Elective 1", credits: 3 },
-            { code: "BLAB506", name: "Labs", credits: 3 }
+            { code: "BIS501", name: "Management & Entrepreneurship", credits: 4, typeId: "theory" },
+            { code: "BIS502", name: "Python for Data Science", credits: 3, typeId: "theory" },
+            { code: "BISL503", name: "Python Lab", credits: 2, typeId: "lab" }
         ],
         "6": [
-            { code: "BIS601", name: "Machine Learning / Data Mining", credits: 4 },
-            { code: "BIS602", name: "Compiler Design", credits: 3 },
-            { code: "BIS603", name: "Cloud Computing", credits: 3 },
-            { code: "BISE604", name: "Elective 2", credits: 3 },
-            { code: "BPRO605", name: "Mini Project", credits: 2 },
-            { code: "BLAB606", name: "Labs", credits: 2 }
+            { code: "BIS601", name: "Software Testing", credits: 3, typeId: "theory" },
+            { code: "BIS602", name: "File Structures", credits: 4, typeId: "theory" },
+            { code: "BISL603", name: "FS Lab", credits: 2, typeId: "lab" }
         ],
         "7": [
-            { code: "BIS701", name: "Big Data / Advanced Topics", credits: 3 },
-            { code: "BISE702", name: "Elective 3", credits: 3 },
-            { code: "BISE703", name: "Elective 4", credits: 3 },
-            { code: "BINT704", name: "Internship", credits: 2 },
-            { code: "BPR1705", name: "Project Phase 1", credits: 4 }
+            { code: "BIS701", name: "Web Programming", credits: 4, typeId: "theory" },
+            { code: "BIS702", name: "Data Mining", credits: 3, typeId: "theory" }
         ],
         "8": [
-            { code: "BPR2801", name: "Project Phase 2", credits: 8 },
-            { code: "BSEM802", name: "Seminar", credits: 2 },
-            { code: "BMOOC803", name: "Internship / MOOC", credits: 2 }
+            { code: "BIS801", name: "Internet of Things", credits: 3, typeId: "theory" },
+            { code: "BIS802", name: "Major Project", credits: 8, typeId: "theory" }
         ]
     },
     "ECE": {
         "3": [
-            { code: "BMAT301", name: "Mathematics-III", credits: 4 },
-            { code: "BEC302", name: "Network Analysis", credits: 4 },
-            { code: "BEC303", name: "Digital System Design", credits: 3 },
-            { code: "BEC304", name: "Electronic Devices", credits: 3 },
-            { code: "BEC305", name: "Signals and Systems", credits: 3 },
-            { code: "BLAB306", name: "Labs", credits: 3 }
+            { code: "BEC301", name: "Analog Electronics", credits: 4, typeId: "theory" },
+            { code: "BEC302", name: "Network Analysis", credits: 4, typeId: "theory" },
+            { code: "BEC303", name: "Digital Electronics", credits: 3, typeId: "theory" },
+            { code: "BECL304", name: "Analog Lab", credits: 2, typeId: "lab" }
         ],
         "4": [
-            { code: "BMAT401", name: "Mathematics-IV", credits: 4 },
-            { code: "BEC402", name: "Communication Theory", credits: 4 },
-            { code: "BEC403", name: "Control Systems", credits: 3 },
-            { code: "BEC404", name: "Microcontrollers (ECE)", credits: 3 },
-            { code: "BEC405", name: "Linear Integrated Circuits", credits: 3 },
-            { code: "BLAB406", name: "Labs", credits: 3 }
+            { code: "BEC401", name: "Microcontrollers", credits: 4, typeId: "theory" },
+            { code: "BEC402", name: "Control Systems", credits: 4, typeId: "theory" },
+            { code: "BEC403", name: "Signals & Systems", credits: 3, typeId: "theory" },
+            { code: "BECL404", name: "Micro Lab", credits: 2, typeId: "lab" }
         ],
         "5": [
-            { code: "BEC501", name: "Computer Networks", credits: 4 },
-            { code: "BEC502", name: "Information Systems", credits: 3 },
-            { code: "BEC503", name: "Software Engineering", credits: 3 },
-            { code: "BEC504", name: "Data Analytics / AI", credits: 3 },
-            { code: "BECE505", name: "Elective 1", credits: 3 },
-            { code: "BLAB506", name: "Labs", credits: 3 }
+            { code: "BEC501", name: "Digital Signal Processing", credits: 4, typeId: "theory" },
+            { code: "BEC502", name: "Verilog HDL", credits: 3, typeId: "theory" },
+            { code: "BECL503", name: "DSP Lab", credits: 2, typeId: "lab" }
         ],
         "6": [
-            { code: "BEC601", name: "Machine Learning / Data Mining", credits: 4 },
-            { code: "BEC602", name: "Compiler Design", credits: 3 },
-            { code: "BEC603", name: "Cloud Computing", credits: 3 },
-            { code: "BECE604", name: "Elective 2", credits: 3 },
-            { code: "BPRO605", name: "Mini Project", credits: 2 },
-            { code: "BLAB606", name: "Labs", credits: 2 }
+            { code: "BEC601", name: "Embedded Systems", credits: 3, typeId: "theory" },
+            { code: "BEC602", name: "Antennas & Propagation", credits: 4, typeId: "theory" },
+            { code: "BECL603", name: "Embedded Lab", credits: 2, typeId: "lab" }
         ],
         "7": [
-            { code: "BEC701", name: "Big Data / Advanced Topics", credits: 3 },
-            { code: "BECE702", name: "Elective 3", credits: 3 },
-            { code: "BECE703", name: "Elective 4", credits: 3 },
-            { code: "BINT704", name: "Internship", credits: 2 },
-            { code: "BPR1705", name: "Project Phase 1", credits: 4 }
+            { code: "BEC701", name: "Microwaves & Radar", credits: 4, typeId: "theory" },
+            { code: "BEC702", name: "Optical Fiber Comm.", credits: 3, typeId: "theory" }
         ],
         "8": [
-            { code: "BPR2801", name: "Project Phase 2", credits: 8 },
-            { code: "BSEM802", name: "Seminar", credits: 2 },
-            { code: "BMOOC803", name: "Internship / MOOC", credits: 2 }
+            { code: "BEC801", name: "Wireless Comm.", credits: 3, typeId: "theory" },
+            { code: "BEC802", name: "Project", credits: 8, typeId: "theory" }
+        ]
+    },
+    "MECH": {
+        "3": [
+            { code: "BME301", name: "Thermodynamics", credits: 4, typeId: "theory" },
+            { code: "BME302", name: "Metal Casting", credits: 4, typeId: "theory" },
+            { code: "BMEL303", name: "MT Lab", credits: 2, typeId: "lab" }
+        ],
+        "4": [
+            { code: "BME401", name: "Kinematics of Machines", credits: 4, typeId: "theory" },
+            { code: "BME402", name: "Fluid Mechanics", credits: 4, typeId: "theory" },
+            { code: "BMEL403", name: "FM Lab", credits: 2, typeId: "lab" }
+        ],
+        "5": [
+             { code: "BME501", name: "Design of Machine Elements I", credits: 4, typeId: "theory" },
+             { code: "BME502", name: "Turbo Machines", credits: 4, typeId: "theory" }
+        ],
+        "6": [
+             { code: "BME601", name: "Finite Element Method", credits: 3, typeId: "theory" },
+             { code: "BME602", name: "Heat Transfer", credits: 4, typeId: "theory" }
+        ],
+        "7": [
+             { code: "BME701", name: "Control Engineering", credits: 4, typeId: "theory" },
+             { code: "BME702", name: "Mechatronics", credits: 3, typeId: "theory" }
+        ],
+        "8": [
+             { code: "BME801", name: "Product Life Cycle", credits: 3, typeId: "theory" },
+             { code: "BME802", name: "Project", credits: 8, typeId: "theory" }
+        ]
+    },
+    "CIVIL": {
+        "3": [
+            { code: "BCV301", name: "Strength of Materials", credits: 4, typeId: "theory" },
+            { code: "BCV302", name: "Surveying", credits: 4, typeId: "theory" },
+            { code: "BCVL303", name: "Survey Lab", credits: 2, typeId: "lab" }
+        ],
+        "4": [
+            { code: "BCV401", name: "Analysis of Structures I", credits: 4, typeId: "theory" },
+            { code: "BCV402", name: "Geotechnical Eng I", credits: 4, typeId: "theory" },
+            { code: "BCVL403", name: "Soil Lab", credits: 2, typeId: "lab" }
+        ],
+        "5": [
+             { code: "BCV501", name: "Concrete Technology", credits: 4, typeId: "theory" },
+             { code: "BCV502", name: "Hydraulics", credits: 4, typeId: "theory" }
+        ],
+        "6": [
+             { code: "BCV601", name: "Environmental Eng I", credits: 3, typeId: "theory" },
+             { code: "BCV602", name: "Highway Eng", credits: 4, typeId: "theory" }
+        ],
+        "7": [
+             { code: "BCV701", name: "Municipal Wastewater", credits: 4, typeId: "theory" },
+             { code: "BCV702", name: "Estimation & Costing", credits: 3, typeId: "theory" }
+        ],
+        "8": [
+             { code: "BCV801", name: "Design of Bridges", credits: 3, typeId: "theory" },
+             { code: "BCV802", name: "Project", credits: 8, typeId: "theory" }
+        ]
+    },
+    "DS": {
+        "3": [
+            { code: "BDS301", name: "Stat for Data Science", credits: 4, typeId: "theory" },
+            { code: "BDS302", name: "Data Structures (DS)", credits: 4, typeId: "theory" },
+            { code: "BDSL303", name: "Python for DS Lab", credits: 2, typeId: "lab" }
+        ],
+        "4": [
+            { code: "BDS401", name: "Mathematical Foundations", credits: 4, typeId: "theory" },
+            { code: "BDS402", name: "Linear Algebra for DS", credits: 4, typeId: "theory" },
+            { code: "BDSL403", name: "SQL Lab", credits: 2, typeId: "lab" }
+        ],
+        "5": [
+             { code: "BDS501", name: "Deep Learning Foundations", credits: 4, typeId: "theory" },
+             { code: "BDS502", name: "Data Visualization", credits: 3, typeId: "theory" }
+        ],
+        "6": [
+             { code: "BDS601", name: "Natural Language Proc", credits: 3, typeId: "theory" },
+             { code: "BDS602", name: "Reinforcement Learning", credits: 4, typeId: "theory" }
+        ],
+        "7": [
+             { code: "BDS701", name: "Advanced DS Algorithms", credits: 4, typeId: "theory" },
+             { code: "BDS702", name: "Capstone Project", credits: 3, typeId: "theory" }
+        ],
+        "8": [
+             { code: "BDS801", name: "AI Policy & Law", credits: 3, typeId: "theory" },
+             { code: "BDS802", name: "Internship Project", credits: 8, typeId: "theory" }
+        ]
+    },
+    "AI": {
+        "3": [
+            { code: "BAI301", name: "Intro to AI", credits: 4, typeId: "theory" },
+            { code: "BAI302", name: "Neural Networks", credits: 4, typeId: "theory" },
+            { code: "BAIL303", name: "AI Lab", credits: 2, typeId: "lab" }
+        ],
+        "4": [
+            { code: "BAI401", name: "Fuzzy Logic", credits: 4, typeId: "theory" },
+            { code: "BAI402", name: "Expert Systems", credits: 4, typeId: "theory" },
+            { code: "BAIL403", name: "Robotics Lab", credits: 2, typeId: "lab" }
+        ],
+        "5": [
+             { code: "BAI501", name: "AI in HealthCare", credits: 4, typeId: "theory" },
+             { code: "BAI502", name: "Knowledge Rep", credits: 3, typeId: "theory" }
+        ],
+        "6": [
+             { code: "BAI601", name: "Genetic Algorithms", credits: 3, typeId: "theory" },
+             { code: "BAI602", name: "Cognitive Computing", credits: 4, typeId: "theory" }
+        ],
+        "7": [
+             { code: "BAI701", name: "AI for Ethics", credits: 4, typeId: "theory" },
+             { code: "BAI702", name: "Applied AI Project", credits: 3, typeId: "theory" }
+        ],
+        "8": [
+             { code: "BAI801", name: "Human AI Interaction", credits: 3, typeId: "theory" },
+             { code: "BAI802", name: "AI Thesis", credits: 8, typeId: "theory" }
+        ]
+    },
+    "EEE": {
+        "3": [
+            { code: "BEE301", name: "Electric Circuits", credits: 4, typeId: "theory" },
+            { code: "BEE302", name: "Transformer & Generator", credits: 4, typeId: "theory" },
+            { code: "BEEL303", name: "Machines Lab", credits: 2, typeId: "lab" }
+        ],
+        "4": [
+            { code: "BEE401", name: "Power Systems I", credits: 4, typeId: "theory" },
+            { code: "BEE402", name: "DC Machines", credits: 4, typeId: "theory" },
+            { code: "BEEL403", name: "DC Lab", credits: 2, typeId: "lab" }
+        ],
+        "5": [
+             { code: "BEE501", name: "Control Systems", credits: 4, typeId: "theory" },
+             { code: "BEE502", name: "Microprocessors", credits: 3, typeId: "theory" }
+        ],
+        "6": [
+             { code: "BEE601", name: "Power Electronics", credits: 4, typeId: "theory" },
+             { code: "BEE602", name: "Electrical Machines II", credits: 4, typeId: "theory" }
+        ],
+        "7": [
+             { code: "BEE701", name: "Power System Analysis", credits: 4, typeId: "theory" },
+             { code: "BEE702", name: "High Voltage Eng", credits: 3, typeId: "theory" }
+        ],
+        "8": [
+             { code: "BEE801", name: "Smart Grid", credits: 3, typeId: "theory" },
+             { code: "BEE802", name: "Project", credits: 8, typeId: "theory" }
         ]
     }
 };
+
 
 const gradePoints: any = { "O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5, "F": 0 };
 
@@ -375,7 +480,9 @@ if (facultyCountActual.count < 5) {
     const insertSub = db.prepare("INSERT OR IGNORE INTO subjects (code, name, semester, department, credits) VALUES (?, ?, ?, ?, ?)");
     
     // Seed branch subjects
-    ["CSE", "ISE", "ECE"].forEach(dept => {
+    Object.keys(vtuScheme).forEach(dept => {
+        if (dept === "common") return;
+        
         // Seed common subjects for each dept in Sem 1 & 2
         Object.keys(vtuScheme.common).forEach(sem => {
             vtuScheme.common[sem].forEach((s: any) => {
@@ -393,14 +500,14 @@ if (facultyCountActual.count < 5) {
     db.prepare("PRAGMA foreign_keys = ON").run();
 
 const requestedStudents = [
-    { name: "Aarav Mehta", email: "student1@college.edu", roll: "CS2026001", sem: 1, dept: "CSE" },
-    { name: "Diya Kapoor", email: "student2@college.edu", roll: "IS2026001", sem: 2, dept: "ISE" },
-    { name: "Rohan Iyer", email: "student3@college.edu", roll: "EC2026001", sem: 3, dept: "ECE" },
-    { name: "Meera Joshi", email: "student4@college.edu", roll: "CS2026002", sem: 4, dept: "CSE" },
-    { name: "Kunal Singh", email: "student5@college.edu", roll: "IS2026002", sem: 5, dept: "ISE" },
-    { name: "Ananya Shetty", email: "student6@college.edu", roll: "EC2026002", sem: 6, dept: "ECE" },
-    { name: "Vivaan Sharma", email: "student7@college.edu", roll: "CS2026003", sem: 7, dept: "CSE" },
-    { name: "Siya Gupta", email: "student8@college.edu", roll: "IS2026004", sem: 8, dept: "ISE" },
+    { name: "Aarav Mehta", email: "student1@college.edu", roll: "CS2026001", sem: 4, dept: "CSE" },
+    { name: "Diya Kapoor", email: "student2@college.edu", roll: "IS2026001", sem: 4, dept: "ISE" },
+    { name: "Rohan Iyer", email: "student3@college.edu", roll: "EC2026001", sem: 4, dept: "ECE" },
+    { name: "Meera Joshi", email: "student4@college.edu", roll: "ME2026001", sem: 4, dept: "MECH" },
+    { name: "Kunal Singh", email: "student5@college.edu", roll: "CV2026001", sem: 4, dept: "CIVIL" },
+    { name: "Ananya Shetty", email: "student6@college.edu", roll: "DS2026001", sem: 4, dept: "DS" },
+    { name: "Vivaan Sharma", email: "student7@college.edu", roll: "AI2026001", sem: 4, dept: "AI" },
+    { name: "Siya Gupta", email: "student8@college.edu", roll: "EE2026001", sem: 4, dept: "EEE" },
 ];
 
     for (const s of requestedStudents) {
@@ -509,6 +616,114 @@ const requestedStudents = [
                 }
             }
             console.log(`[Seeding] Created attendance records for: ${s.name}`);
+        }
+    }
+
+    // Seed Study Materials
+    const materialCount = db.prepare("SELECT count(*) as count FROM materials").get() as { count: number };
+    if (materialCount.count === 0) {
+        const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any;
+        if (admin) {
+            const sampleMaterials = [
+                { title: 'Data Structures Model Question Paper 2024', type: 'model_paper', dept: 'CSE', sem: 3, subject: 'DS', url: 'https://vtu.ac.in/pdf/asyllabus/physics_cycle_2022.pdf' },
+                { title: 'Operating Systems Previous Year solved paper', type: 'pyq', dept: 'CSE', sem: 4, subject: 'OS', url: 'https://vtu.ac.in/pdf/asyllabus/chem_cycle_2022.pdf' },
+                { title: 'DSATM Discrete Mathematics Question Bank', type: 'question_bank', dept: 'CSE', sem: 3, subject: 'Discrete Mathematics', url: 'https://vtu.ac.in/pdf/asyllabus/2022/bme.pdf' },
+                { title: 'Computer Networks Standard Textbook', type: 'textbook', dept: 'ISE', sem: 5, subject: 'CN', url: 'https://vtu.ac.in/pdf/asyllabus/2022/phy.pdf' }
+            ];
+
+            for (const sm of sampleMaterials) {
+                const sub = db.prepare("SELECT id FROM subjects WHERE department = ? AND semester = ? AND (name LIKE ? OR code LIKE ?) LIMIT 1")
+                    .get(sm.dept, sm.sem, `%${sm.subject}%`, `%${sm.subject}%`) as any;
+                
+                db.prepare(`
+                    INSERT INTO materials (title, type, subject_id, semester, url, uploaded_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `).run(sm.title, sm.type, sub ? sub.id : 1, sm.sem, sm.url, admin.id);
+            }
+            console.log("[Seeding] Created 4 sample study materials.");
+        }
+    }
+
+    // Seed Time Slots if empty
+    const timeSlotsCount = db.prepare("SELECT count(*) as count FROM time_slots").get() as { count: number };
+    if (timeSlotsCount.count === 0) {
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const slots = [
+            { period: 1, start: '09:00', end: '10:00' },
+            { period: 2, start: '10:00', end: '11:00' },
+            { period: 3, start: '11:15', end: '12:15' },
+            { period: 4, start: '12:15', end: '13:15' },
+            { period: 5, start: '14:00', end: '15:00' },
+            { period: 6, start: '15:00', end: '16:00' },
+        ];
+        
+        const insertSlot = db.prepare("INSERT INTO time_slots (day, start_time, end_time, period_number) VALUES (?, ?, ?, ?)");
+        days.forEach(day => {
+            slots.forEach(slot => {
+                insertSlot.run(day, slot.start, slot.end, slot.period);
+            });
+        });
+        console.log("[Seeding] Created 36 time slots.");
+    }
+
+    // Seed Rooms if empty
+    const roomsCount = db.prepare("SELECT count(*) as count FROM rooms").get() as { count: number };
+    if (roomsCount.count === 0) {
+        const rooms = [
+            { name: 'LH-101', type: 'classroom' }, { name: 'LH-102', type: 'classroom' },
+            { name: 'LH-201', type: 'classroom' }, { name: 'LH-202', type: 'classroom' },
+            { name: 'CS-LAB-1', type: 'lab' }, { name: 'CS-LAB-2', type: 'lab' },
+            { name: 'EC-LAB-1', type: 'lab' }, { name: 'ME-WORKSHOP', type: 'lab' }
+        ];
+        const insertRoom = db.prepare("INSERT INTO rooms (room_name, type) VALUES (?, ?)");
+        rooms.forEach(r => insertRoom.run(r.name, r.type));
+        console.log("[Seeding] Created 8 rooms.");
+    }
+
+    // Seed Timetable Entries for Demo Students (Smart Population)
+    const entryCount = db.prepare("SELECT count(*) as count FROM timetable_entries").get() as { count: number };
+    if (entryCount.count === 0) {
+        const departments = Object.keys(vtuScheme).filter(d => d !== 'common');
+        const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
+        const faculty = db.prepare("SELECT id FROM users WHERE role = 'faculty'").all() as any[];
+        const rooms = db.prepare("SELECT id FROM rooms").all() as any[];
+        const slots = db.prepare("SELECT id FROM time_slots").all() as any[];
+        
+        if (faculty.length > 0 && rooms.length > 0 && slots.length > 0) {
+            departments.forEach(dept => {
+                semesters.forEach(sem => {
+                    // Create a timetable record
+                    const res = db.prepare("INSERT INTO timetables (department, semester, academic_year) VALUES (?, ?, ?)").run(
+                        dept, sem, "2025-26"
+                    );
+                    const ttId = Number(res.lastInsertRowid);
+                    
+                    // Get subjects for this dept/sem
+                    const subs = db.prepare("SELECT id FROM subjects WHERE department = ? AND semester = ?").all(dept, sem) as any[];
+                    
+                    if (subs.length > 0) {
+                        // Seed specific entries for Monday and Tuesday to show "Current Class"
+                        // Pick first 4 slots for each day
+                        ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].forEach(day => {
+                            const daySlots = db.prepare("SELECT id FROM time_slots WHERE day = ? ORDER BY period_number").all(day) as any[];
+                            for (let i = 0; i < Math.min(subs.length, daySlots.length); i++) {
+                                // Simple mapping: one subject per slot
+                                db.prepare(`
+                                    INSERT INTO timetable_entries (timetable_id, subject_id, faculty_id, room_id, time_slot_id)
+                                    VALUES (?, ?, ?, ?, ?)
+                                `).run(
+                                    ttId,
+                                    subs[i].id,
+                                    faculty[i % faculty.length].id,
+                                    rooms[i % rooms.length].id,
+                                    daySlots[i].id
+                                );
+                            }
+                        });
+                    }
+                });
+            });
+            console.log("[Seeding] Automatically populated timetables for all departments and semesters.");
         }
     }
 console.log("[Seeding] Completed requested students check.");
@@ -674,6 +889,10 @@ if (statusCount.count === 0) {
         }
         console.log("[Seeding] Added sample DSATM study materials.");
     }
+
+try {
+    db.prepare("ALTER TABLE subjects ADD COLUMN capacity INTEGER DEFAULT 60").run();
+} catch (e) {}
 
 // IA Notification Logic for Faculty
 function checkIANotifications() {
@@ -899,22 +1118,18 @@ async function startServer() {
 
         if (!student) return res.status(404).json({ message: "Student record not found" });
 
-        const sem = student.semester.toString();
-        const branch = student.department;
+        const semester = student.semester;
+        const department = student.department;
 
-        let courses = [];
-        if (["1", "2"].includes(sem)) {
-            courses = vtuScheme.common[sem] || [];
-        } else if (branch && vtuScheme[branch]) {
-            courses = vtuScheme[branch][sem] || [];
-        } else {
-            // Default: if branch not found (like ECE), show some placeholder or common ones if available
-            courses = [];
-        }
+        // Fetch subjects for this semester and department OR department 'ALL'
+        const courses = db.prepare(`
+            SELECT * FROM subjects 
+            WHERE semester = ? AND (department = ? OR department = 'ALL')
+        `).all(semester, department);
 
         res.json({
-            branch,
-            semester: student.semester,
+            branch: department,
+            semester: semester,
             courses
         });
     });
@@ -984,8 +1199,12 @@ async function startServer() {
                 params.push(semester);
             }
             if (normalizedDept) {
-                conditions.push("s.department = ?");
-                params.push(normalizedDept);
+                if (normalizedDept === 'ALL') {
+                    conditions.push("s.department = 'ALL'");
+                } else {
+                    conditions.push("(s.department = ? OR s.department = 'ALL')");
+                    params.push(normalizedDept);
+                }
             }
 
             if (conditions.length > 0) {
@@ -1019,6 +1238,75 @@ async function startServer() {
         if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
         const { subjectId, teacherId } = req.body;
         db.prepare("UPDATE subjects SET teacher_id = ? WHERE id = ?").run(teacherId, subjectId);
+        res.json({ success: true });
+    });
+
+    app.post("/api/admin/subjects", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+        const { code, name, semester, department, credits, capacity, teacher_id } = req.body;
+        try {
+            const result = db.prepare("INSERT INTO subjects (code, name, semester, department, credits, capacity, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                .run(code, name, semester, department, credits, capacity || 60, teacher_id || null);
+            res.json({ id: result.lastInsertRowid });
+        } catch (error) {
+            res.status(400).json({ error: "Subject already exists or invalid data" });
+        }
+    });
+
+    app.put("/api/admin/subjects/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+        const { code, name, semester, department, credits, capacity, teacher_id } = req.body;
+        const { id } = req.params;
+        try {
+            db.prepare("UPDATE subjects SET code = ?, name = ?, semester = ?, department = ?, credits = ?, capacity = ?, teacher_id = ? WHERE id = ?")
+                .run(code, name, semester, department, credits, capacity || 60, teacher_id || null, id);
+            res.json({ success: true });
+        } catch (error) {
+            res.status(400).json({ error: "Invalid data" });
+        }
+    });
+
+    app.delete("/api/admin/subjects/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+        const { id } = req.params;
+        try {
+            db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
+            res.json({ success: true });
+        } catch (error) {
+            res.status(400).json({ error: "Cannot delete subject" });
+        }
+    });
+
+    app.get("/api/rooms", authenticateToken, (req, res) => {
+        const rooms = db.prepare("SELECT * FROM rooms").all();
+        res.json(rooms);
+    });
+
+    app.post("/api/admin/timetable-entries", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+        const { timetable_id, subject_id, faculty_id, room_id, time_slot_id } = req.body;
+        
+        // Conflict Check (Room & Faculty)
+        const roomConflict = db.prepare("SELECT id FROM timetable_entries WHERE room_id = ? AND time_slot_id = ?").get(room_id, time_slot_id);
+        if (roomConflict) return res.status(400).json({ error: "Room already occupied at this time" });
+        
+        const facultyConflict = db.prepare("SELECT id FROM timetable_entries WHERE faculty_id = ? AND time_slot_id = ?").get(faculty_id, time_slot_id);
+        if (facultyConflict) return res.status(400).json({ error: "Faculty member already busy at this time" });
+
+        try {
+            const result = db.prepare(`
+                INSERT INTO timetable_entries (timetable_id, subject_id, faculty_id, room_id, time_slot_id)
+                VALUES (?, ?, ?, ?, ?)
+            `).run(timetable_id, subject_id, faculty_id, room_id, time_slot_id);
+            res.json({ id: result.lastInsertRowid });
+        } catch (error) {
+            res.status(400).json({ error: "Error creating entry" });
+        }
+    });
+
+    app.delete("/api/admin/timetable-entries/:id", authenticateToken, (req: any, res) => {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+        db.prepare("DELETE FROM timetable_entries WHERE id = ?").run(req.params.id);
         res.json({ success: true });
     });
 
